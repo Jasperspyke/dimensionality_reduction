@@ -1,393 +1,41 @@
 import numpy as np
 import sys
-
-x = np.zeros([19, 19], dtype=int)
-
-import pandas as pd
-
-
-
-def fancy_print(matrix):
-    df = pd.DataFrame(matrix)
-    print(df.to_string(index=False, header=False))
-    print('___________________________________________________________')
-
-
-
-def process_move(x, last_move):
-    has_liberties = np.full(fill_value=False, shape=[19, 19], dtype=bool)
-    empty_spaces = np.where(x==0)
-    has_liberties[empty_spaces] = True
-    empty_spaces = list(zip(empty_spaces[0], empty_spaces[1]))
-    for i in range(0, 19):
-        for j in range(0, 19):
-            here = x[i, j]
-            if (i, j) in empty_spaces:
-                if i != 0:
-                    has_liberties[i-1, j] = True
-                if i != 18:
-                    has_liberties[i+1, j] = True
-                if j != 0:
-                    has_liberties[i, j-1] = True
-                if j != 18:
-                    has_liberties[i, j+1] = True
-
-            if has_liberties[i, j] == True:
-                # stones with liberties grant liberties to same-colored neighbors
-                if i != 0:
-                    if x[i-1, j] == here:
-                        has_liberties[i-1, j] = True
-                if i != 18:
-                    if x[i+1, j] == here:
-                        has_liberties[i+1, j] = True
-                if j != 0:
-                    if x[i, j-1] == here:
-                        has_liberties[i, j-1] = True
-                if j != 18:
-                    if x[i, j+1] == here:
-                        has_liberties[i, j+1] = True
-
-    y = np.where(has_liberties, x, 0)
-    new_board = np.where(y != 0, x, 0)
-    new_board[last_move[0], last_move[1]] = last_move[2]
-    return new_board
-
-def plot_board(x, color=1, territory=None, ring_moves=None, move_count=None, stone_opacity=1.0, fig=None, ax=None):
-
-    if color == 1:
-        color = 'black'
-    else:
-        color = 'white'
-    if fig is None:
-
-        fig, ax = plt.subplots(figsize=[12, 8])
-    fig.patch.set_facecolor((1, 1, .8))
-    ax.set_xlim([0, 24])
-    ax.set_ylim([0, 18])
-    plt.xticks(ticks=np.arange(1,20) * 24/19 -0.633, labels=np.arange(1, 20))
-    plt.yticks(ticks=np.arange(1,20) * 18.45/20 - 0.2, labels=np.arange(1, 20))
-
-    if x.any():
-
-        black_state = list(np.argwhere(x == 1))
-        white_state = list(np.argwhere(x == -1))
-        for idx, item in enumerate(black_state):
-            item = tuple((item[0], item[1], 1))
-            black_state[idx] = item
-        for idx, item in enumerate(white_state):
-            item = tuple((item[0], item[1], -1))
-            white_state[idx] = item
-        show_stones(fig, ax, black_state, opacity=stone_opacity)
-        show_stones(fig, ax, white_state, opacity=stone_opacity)
-        if ring_moves is not None:
-            last_move = ring_moves[:move_count + 1][-1]
-            show_ring(fig, ax, last_move, color, ring_radius=2, ring_thickness=1.125, alpha=1)
-        if territory is not None:
-            display_all_territory(fig, ax, territory)
-    else:
-        print('problem! X is:', x)
-
-    return fig, ax
-
-
-def get_liberties(x):
-    has_liberties = np.full(fill_value=False, shape=[19, 19], dtype=bool)
-    empty_spaces = np.where(x==0)
-    has_liberties[empty_spaces] = True
-    empty_spaces = list(zip(empty_spaces[0], empty_spaces[1]))
-    for i in range(0, 19):
-        for j in range(0, 19):
-            here = x[i, j]
-            if (i, j) in empty_spaces:
-                if i != 0:
-                    has_liberties[i-1, j] = True
-                if i != 18:
-                    has_liberties[i+1, j] = True
-                if j != 0:
-                    has_liberties[i, j-1] = True
-                if j != 18:
-                    has_liberties[i, j+1] = True
-
-
-            if has_liberties[i, j] == True:
-                # stones with liberties grant liberties to same-colored neighbors
-                if i != 0:
-                    if x[i-1, j] == here:
-                        has_liberties[i-1, j] = True
-                if i != 18:
-                    if x[i+1, j] == here:
-                        has_liberties[i+1, j] = True
-                if j != 0:
-                    if x[i, j-1] == here:
-                        has_liberties[i, j-1] = True
-
-                if j != 18:
-                    if x[i, j+1] == here:
-
-                        has_liberties[i, j+1] = True
-    return has_liberties
-
-def SpaceOccupiedError(Exception):
-    def __init__(self, message="Space occupied!"):
-        super().__init__(message)
-
-def is_liberty(x, action, color):
-    if not x[action[0], action[1]] == 0:
-        raise SpaceOccupiedError()
-    action = np.array(action, dtype=int)
-    x[action[0], action[1]] = color
-    group = [action]
-
-    while group:
-        loc = group.pop()
-        for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-            new_loc = loc + direction
-            if 0 <= new_loc[0] < x.shape[0] and 0 <= new_loc[1] < x.shape[1]:  # Boundary check
-                if x[new_loc[0], new_loc[1]] == 0:
-                    x[action[0], action[1]] = 0  # Restore the board before returning
-                    return True
-                elif x[new_loc[0], new_loc[1]] == x[loc[0], loc[1]]:
-                    group.append(new_loc)
-
-    x[action[0], action[1]] = 0  # Restore the board before returning
-    return False
-
-
-def is_liberty_recursive(board, loc):
-
-    i, j = loc[0], loc[1]
-    visited = set()
-    if tuple((i, j)) in visited:
-        return False
-    visited.add((i, j))
-
-    color = board[i, j]
-    for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-        nx, ny = i + dx, j + dy
-        if 0 <= nx < board.shape[0] and 0 <= ny < board.shape[1]:
-            if board[nx, ny] == 0:
-                return True
-            if board[nx, ny] == color and is_liberty_recursive(board, nx, ny, visited):
-                return True
-
-    return False
-
-
-def attempt_eye_capture(x, action, color):
-    if not x[action[0], action[1]] == 0:
-        print('Space is already taken at ' + str(action) + ' by ' + str(x[action[0], action[1]]))
-        raise SpaceOccupiedError
-    x[action] = color
-    has_liberties = np.full(fill_value=False, shape=[19, 19], dtype=bool)
-    empty_spaces = np.where(x == 0)
-    has_liberties[empty_spaces] = True
-    empty_spaces = list(zip(empty_spaces[0], empty_spaces[1]))
-
-    for i in range(0, 19):
-        for j in range(0, 19):
-            here = x[i, j]
-            if (i, j) in empty_spaces:
-                if i != 0:
-                    has_liberties[i - 1, j] = True
-                if i != 18:
-                    has_liberties[i + 1, j] = True
-                if j != 0:
-                    has_liberties[i, j - 1] = True
-                if j != 18:
-                    has_liberties[i, j + 1] = True
-
-    assert has_liberties[action] == False
-
-    for i in range(0, 19):
-        for j in range(0, 19):
-            if has_liberties[i, j] == True:
-                # stones with liberties grant liberties to same-colored neighbors
-                if i != 0:
-                    if x[i - 1, j] == here:
-                        has_liberties[i - 1, j] = True
-                if i != 18:
-                    if x[i + 1, j] == here:
-                        has_liberties[i + 1, j] = True
-                if j != 0:
-                    if x[i, j - 1] == here:
-                        has_liberties[i, j - 1] = True
-                if j != 18:
-                    if x[i, j + 1] == here:
-                        has_liberties[i, j + 1] = True
-
-    # update the board by removing captured stones
-    y = np.where(has_liberties, x, 0)
-    new_board = np.where(y != 0, x, 0)
-    # re-add the action and check if it has liberties
-    new_board[action] = color
-    lib = get_liberties(new_board)
-    if lib[action] == False:
-        print('Illegal move!')
-        raise ValueError
-
-    return new_board
-
-
-def attempt_eye_capture_white(x, action):
-    assert x[action] == 0
-    x[action] = -1
-    has_liberties = np.full(fill_value=False, shape=[19, 19], dtype=bool)
-    empty_spaces = np.where(x==0)
-    has_liberties[empty_spaces] = True
-    empty_spaces = list(zip(empty_spaces[0], empty_spaces[1]))
-    for i in range(0, 19):
-        for j in range(0, 19):
-            here = x[i, j]
-            if (i, j) in empty_spaces:
-                if i != 0:
-                    has_liberties[i-1, j] = True
-                if i != 18:
-                    has_liberties[i+1, j] = True
-                if j != 0:
-                    has_liberties[i, j-1] = True
-                if j != 18:
-                    has_liberties[i, j+1] = True
-
-    assert has_liberties[action] == False
-    for i in range(0, 19):
-        for j in range(0, 19):
-            if has_liberties[i, j] == True:
-                # stones with liberties grant liberties to same-colored neighbors
-                if i != 0:
-                    if x[i-1, j] == here:
-                        has_liberties[i-1, j] = True
-                if i != 18:
-                    if x[i+1, j] == here:
-                        has_liberties[i+1, j] = True
-                if j != 0:
-                    if x[i, j-1] == here:
-                        has_liberties[i, j-1] = True
-                if j != 18:
-                    if x[i, j+1] == here:
-                        has_liberties[i, j+1] = True
-    # update the board by removing captured stones
-    p.where(has_liberties, x, 0)
-    new_board = np.where(y != 0, x, 0)
-    # re-add the action and check if it has liberties
-    new_board[action] = -1
-    print('move!')
-    lib = get_liberties(new_board)
-    if lib[action] == False:
-        fancy_print(lib)
-        print('Illegal move!')
-        raise ValueError
-
+import re
+import string
 import matplotlib.pyplot as plt
 import pandas as pd
-import warnings
-import sys
+import matplotlib
+
+
+
+
 
 # load png images in matplotlib and display them
-go_board = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\static\go_board.png')
+go_board = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\static\go_board.png')[16:, 218:741, :]
 black_piece = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\static\go_black.png')
 white_piece = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\static\go_white.png')
 black_territory = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\static\obama_2.png')
 white_territory = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\static\biden_2.png')
 
-def move(loc, x, color, state, ko_states):
-    captures = None
-    if not x[loc[0], loc[1]] == 0:
-        raise ValueError('Space is already taken')
-    if not is_liberty_recursive(x, loc, 'white' if color == -1 else 'black'):
-        x = attempt_eye_capture(x, loc, color)
-    x[loc[0], loc[1]] = color
-    y = process_move(x)
-    return y
-
-
-def preprocess(img, biden=False):
-    # Crop the image to be square
-    height, width = img.shape[:2]
-    assert width >= height
-    half = (width - height) // 2
-    cropped_img = img[:, half:half + height]
-
-    # Convert to grayscale
-    gray_img = np.dot(cropped_img[..., :3], [0.2989, 0.5870, 0.1140])
-
-    background = gray_img > 0.1
-    if biden:
-        gray_img *= 1.2
-        gray_img = np.clip(gray_img, 0, 1)
-        background = gray_img > 0.6
-        background = ~background
-    gray_img = np.dstack([gray_img, gray_img, gray_img, background])
-
-    # Display the grayscale image
-    return gray_img
-
-
-black_territory = preprocess(black_territory)
-white_territory = preprocess(white_territory, biden=True)
-white_territory = np.clip(white_territory, 0, 0.75)
-
-
 def fancy_print(matrix):
-    df = pd.DataFrame(matrix)
+    matrix = np.fliplr(np.flipud(np.fliplr(matrix.transpose())))
+    num_rows, num_cols = matrix.shape
+
+    # Convert the matrix to string type
+    matrix_str = matrix.astype(str)
+
+    # Create column index (as a row) and add as the first row
+    col_index = np.arange(num_cols).astype(str)
+    header_row = np.insert(col_index, 0, '')
+    matrix_with_col_index = np.vstack([header_row, np.column_stack([np.arange(num_rows).astype(str), matrix_str])])
+
+    # Create DataFrame
+    df = pd.DataFrame(matrix_with_col_index)
+
+    # Print DataFrame
     print(df.to_string(index=False, header=False))
     print('___________________________________________________________')
 
-# minuses 1 from each element in a tuple or list of tuples
-def minus_one(loc):
-    if isinstance(loc, tuple):
-        return tuple([x - 1 for x in loc])
-    return [tuple([x - 1 for x in loc]) for loc in loc]
-def plus_one(loc):
-    if isinstance(loc, tuple):
-        return tuple([x + 1 for x in loc])
-    return [tuple([x + 1 for x in loc]) for loc in loc]
-# crop x dimensions to within 218 and 741
-go_board = go_board[16:, 218:741, :]
-
-
-def draw_ring(radius, thickness, opacity=1.0):
-    size = 2 * (radius + thickness) + 1
-    ring = np.zeros((size, size, 4), dtype=np.uint8)
-    center = (size // 2, size // 2)
-    alpha = int(255 * opacity)
-
-    for r in range(radius, radius + thickness):
-        for theta in np.linspace(0, 2 * np.pi, 1000):
-            x = int(center[0] + r * np.cos(theta))
-            y = int(center[1] + r * np.sin(theta))
-            if 0 <= x < size and 0 <= y < size:
-                ring[x, y, 0] = 255  # Red channel
-                ring[x, y, 1] = 255  # Green channel
-                ring[x, y, 2] = 255  # Blue channel
-                ring[x, y, 3] = alpha  # Alpha channel
-
-    return ring
-
-
-def show_ring(fig, ax, placement, color, ring_radius=1, ring_thickness=10, opacity=1.0):
-    x, y = placement
-    assert 0 <= x < 19 and 0 <= y < 19
-    x_intercept = 7
-    y_intercept = 6.17
-    x_slope = 12.531
-    y_slope = 9.31
-
-    x_center = x_intercept + x_slope * x
-    y_center = y_intercept + y_slope * y
-
-    ring = draw_ring(int(ring_radius * 100), int(ring_thickness * 100), opacity)
-    ring_size = ring.shape[0]
-    extent = [
-        x_center - ring_size / 200,
-        x_center + ring_size / 200,
-        y_center - ring_size / 200,
-        y_center + ring_size / 200
-    ]
-    if color == -1:
-        for dim in range(0, 3):
-            ring[:, :, dim] = 1 - ring[:, :, dim]
-    extent = (np.array(extent) * 0.1)
-    ax.imshow(ring, extent=extent)
 
 
 def show_stones(fig, ax, placements, ring=False, count_n_stones=None, opacity=1.0):
@@ -424,6 +72,239 @@ def show_stones(fig, ax, placements, ring=False, count_n_stones=None, opacity=1.
         for j, i in enumerate(range(-count_n_stones, 0)):
             plot_number(fig, ax, [placements[i][0], placements[i][1]], color=placements[i][2], number=j + 1)
 
+def show_ring(fig, ax, placement, color, ring_radius=1, ring_thickness=10, opacity=1.0):
+    x, y = placement
+    y = 18 - y
+    assert 0 <= x < 19 and 0 <= y < 19
+    x_intercept = 7
+    y_intercept = 6.17
+    x_slope = 12.531
+    y_slope = 9.31
+
+    x_center = x_intercept + x_slope * x
+    y_center = y_intercept + y_slope * y
+
+    ring = draw_ring(int(ring_radius * 100), int(ring_thickness * 100), opacity)
+    ring_size = ring.shape[0]
+    extent = [
+        x_center - ring_size / 200,
+        x_center + ring_size / 200,
+        y_center - ring_size / 200,
+        y_center + ring_size / 200
+    ]
+    if color == -1:
+        for dim in range(0, 3):
+            ring[:, :, dim] = 1 - ring[:, :, dim]
+    extent = (np.array(extent) * 0.1)
+    ax.imshow(ring, extent=extent)
+def plot_board(x, color=1, territory=None, ring_moves=None, move_count=None, stone_opacity=1.0, fig=None, ax=None):
+
+    if color == 1:
+        color = 'black'
+    else:
+        color = 'white'
+    if fig is None:
+
+        fig, ax = plt.subplots(figsize=[12, 8])
+    fig.patch.set_facecolor((1, 1, .8))
+    ax.set_xlim([0, 24])
+    ax.set_ylim([0, 18])
+    plt.xticks(ticks=np.arange(1,20) * 24/19 -0.633, labels=np.arange(1, 20))
+    plt.yticks(ticks=np.arange(1,20) * 18.45/20 - 0.2, labels=np.arange(1, 20))
+    if x.any():
+
+        black_state = list(np.argwhere(x == 1))
+        white_state = list(np.argwhere(x == -1))
+        for idx, item in enumerate(black_state):
+            item = tuple((item[0], item[1], 1))
+            black_state[idx] = item
+        for idx, item in enumerate(white_state):
+            item = tuple((item[0], item[1], -1))
+            white_state[idx] = item
+        show_stones(fig, ax, black_state, opacity=stone_opacity)
+        show_stones(fig, ax, white_state, opacity=stone_opacity)
+        if ring_moves is not None:
+            last_move = ring_moves[:move_count][-1][-1]
+            show_ring(fig, ax, last_move, color, ring_radius=2, ring_thickness=1.125, opacity=1)
+        if territory is not None:
+            display_all_territory(fig, ax, territory)
+    else:
+        print('problem! X is:', x)
+
+    return fig, ax
+
+
+class SelfCaptureError(Exception):
+    def __init__(self, message="Self Capture Detected!"):
+        super().__init__(message)
+
+class KoError(Exception):
+    def __init__(self, message="Ko violation detected!"):
+        super().__init__(message)
+
+class IllegalMoveError(Exception):
+    def __init__(self, message="Illegal move detected!"):
+        super().__init__(message)
+
+
+def would_be_liberty(x, action, color):
+    # Check if the action is a legal move, or if it would have no liberties
+
+    if not x[action[0], action[1]] == 0:
+        raise SpaceOccupiedError()
+
+    action = np.array(action, dtype=int)
+    x[action[0], action[1]] = color
+    group = [action]
+    visited = set()  # Keep track of visited locations
+
+    while group:
+        loc = group.pop()
+
+        for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            new_loc = loc + direction
+            if 0 <= new_loc[0] < x.shape[0] and 0 <= new_loc[1] < x.shape[1]:  # Boundary check
+                if tuple(new_loc) in visited:
+                    continue
+
+                visited.add(tuple(new_loc))
+
+                if x[new_loc[0], new_loc[1]] == 0:
+                    x[action[0], action[1]] = 0  # Restore the board before returning
+                    return True
+                elif x[new_loc[0], new_loc[1]] == x[loc[0], loc[1]]:
+                    group.append(new_loc)
+
+    x[action[0], action[1]] = 0  # Restore the board before returning
+    return False
+
+
+def has_liberty(board, loc, visited=None):
+    # Check if a group has any liberties
+
+    if visited is None:
+        visited = set()
+    if type(visited) is not set:
+        return True
+
+
+    i, j = loc
+    if (i, j) in visited:
+        return False
+
+    visited.add((i, j))
+
+    color = board[i, j]
+    for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+        nx, ny = i + dx, j + dy
+        if 0 <= nx < board.shape[0] and 0 <= ny < board.shape[1]:
+            if board[nx, ny] == 0:
+                return True
+            if board[nx, ny] == color and (nx, ny) not in visited:
+                if has_liberty(board, (nx, ny), visited):
+                    return True
+
+    return False
+
+def check_eye_move(x, action, color, atari):
+    for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+        new_loc = np.array(action) + np.array(direction)
+        if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19 and atari[new_loc[0], new_loc[1]]:
+            return True
+    return False
+
+def preprocess(img, biden=False):
+    # Crop the image to be square
+    height, width = img.shape[:2]
+    assert width >= height
+    half = (width - height) // 2
+    cropped_img = img[:, half:half + height]
+
+    # Convert to grayscale
+    gray_img = np.dot(cropped_img[..., :3], [0.2989, 0.5870, 0.1140])
+
+    background = gray_img > 0.1
+    if biden:
+        gray_img *= 1.2
+        gray_img = np.clip(gray_img, 0, 1)
+        background = gray_img > 0.6
+        background = ~background
+    gray_img = np.dstack([gray_img, gray_img, gray_img, background])
+
+    # Display the grayscale image
+    return gray_img
+
+
+black_territory = preprocess(black_territory)
+white_territory = preprocess(white_territory, biden=True)
+white_territory = np.clip(white_territory, 0, 0.75)
+
+
+
+
+
+
+# minuses 1 from each element in a tuple or list of tuples
+def minus_one(loc):
+    if isinstance(loc, tuple):
+        return tuple([x - 1 for x in loc])
+    return [tuple([x - 1 for x in loc]) for loc in loc]
+
+
+# crop x dimensions to within 218 and 741
+
+
+def draw_ring(radius, thickness, opacity=1.0):
+    size = 2 * (radius + thickness) + 1
+    ring = np.zeros((size, size, 4), dtype=np.uint8)
+    center = (size // 2, size // 2)
+    alpha = int(255 * opacity)
+
+    for r in range(radius, radius + thickness):
+        for theta in np.linspace(0, 2 * np.pi, 1000):
+            x = int(center[0] + r * np.cos(theta))
+            y = int(center[1] + r * np.sin(theta))
+            if 0 <= x < size and 0 <= y < size:
+                ring[x, y, 0] = 255  # Red channel
+                ring[x, y, 1] = 255  # Green channel
+                ring[x, y, 2] = 255  # Blue channel
+                ring[x, y, 3] = alpha  # Alpha channel
+
+    return ring
+
+def is_eye_in_living_shape(x, location):
+
+    for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+        loc = np.array(location) + np.array(direction)
+        here = x[loc[0], loc[1]]
+        group = [loc]
+        eyes = set()
+        territory_map = get_territory(x)[1]
+        visited = set()  # Add a set to keep track of all visited positions
+
+        if here == 0:
+            return False
+
+        while group:
+            loc = group.pop()
+            if tuple(loc) in visited:  # Skip if already visited
+                continue
+            visited.add(tuple(loc))  # Mark as visited
+
+            for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                direction = np.array(direction)
+                loc = np.array(loc)
+                new_loc = loc + direction
+                if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19:
+                    # if the group has a liberty, check that it would be territory
+                    if x[new_loc[0], new_loc[1]] == 0 and territory_map[new_loc[0], new_loc[1]] == here:
+                        eyes.add(tuple(new_loc))
+                    elif x[new_loc[0], new_loc[1]] == here and tuple(new_loc) not in visited:
+                        group.append(tuple(new_loc))
+
+        if len(eyes) > 1:
+            return True
+    return False
 
 def is_chain_alive(x, loc):
 
@@ -431,7 +312,7 @@ def is_chain_alive(x, loc):
     here = x[loc[0], loc[1]]
     group = [loc]
     eyes = set()
-    territory_map = map_territory(x)
+    territory_map = get_territory(x)[1]
     visited = set()  # Add a set to keep track of all visited positions
 
     if here == 0:
@@ -456,29 +337,83 @@ def is_chain_alive(x, loc):
 
     if len(eyes) > 1:
         return True
+    elif len(eyes) == 1 and is_eye_in_living_shape(x, eyes.pop()):
+        return True
     else:
         return False
 
+def is_chain_dead(x, loc):
+    if x[loc] == 0:
+        return False  # Empty space is not a chain
 
+    color = x[loc]
+    directions = ['up', 'down', 'left', 'right', 'diag1', 'diag2']
 
-# Assuming get_territory function is defined elsewhere
+    for direction in directions:
+        if direction == 'up':
+            path = x[loc[0]:, loc[1]]
+        elif direction == 'down':
+            path = np.flip(x[:loc[0] + 1, loc[1]])
+        elif direction == 'left':
+            path = np.flip(x[loc[0], :loc[1] + 1])
+        elif direction == 'right':
+            path = x[loc[0], loc[1]:]
+        elif direction == 'diag1':
+            path = np.diagonal(x, offset=loc[1] - loc[0])[max(loc[1] - loc[0], 0):]
+        elif direction == 'diag2':
+            flipped_x = np.fliplr(x)
+            diag_offset = (18 - loc[1]) - loc[0]
+            path = np.diagonal(flipped_x, offset=diag_offset)[max(diag_offset, 0):]
+
+        first_stone = path[path != 0]
+        if len(first_stone) > 1 and first_stone[1] == color:
+            return False  # Found a matching stone, chain is not dead
+    return True  # If we reach here, no matching stones were found in any direction
 def is_territory(x, loc):
+    territory = 0
     if x[loc] != 0:
         return False
-    for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-        new_loc = loc + direction
-        if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19:
-            if x[new_loc[0], new_loc[1]] != 0:
-                return False
-    return True
+    for direction in ['up', 'down', 'left', 'right']:
+        if direction == 'up':
+            path = x[loc[0], loc[1]:]
+        elif direction == 'down':
+            path = np.flip(x[loc[0], :loc[1]])
+        elif direction == 'left':
+            path = np.flip(x[:loc[0], loc[1]])
+        elif direction == 'right':
+            path = x[loc[0]:, loc[1]]
+        if len(path) == 0 or len(np.argwhere(path != 0)) == 0:
+            continue
+        else:
+            first_stone = path[path != 0][0]
+            territory += first_stone
+    if np.abs(territory) < 2:
+        return 0
+    return np.sign(territory)
 
-def map_territory(x):
+
+
     territory_map = np.zeros([19, 19], dtype=int)
     for i in range(19):
         for j in range(19):
             if is_territory(x, (i, j)):
                 territory_map[i, j] = 1
-    return territory_map
+    return get_territory(x)[1]
+
+
+def from_bicharacter(bichar):
+    # Ensure input is valid (length of 2 and only alphabetic characters)
+    if len(bichar) != 2 or not bichar.isalpha():
+        raise ValueError("Input must be a two-letter string")
+
+    positions = [(ord(char) - ord('a') + 0) for char in bichar.lower()]
+
+    return tuple(positions)
+
+def to_bicharacter(coord):
+    x = chr(coord[0] + 64)
+    y = str(coord[1])
+    return x + y
 
 def show_territory(fig, ax, placement, color):
     x, y = placement
@@ -498,43 +433,19 @@ def show_territory(fig, ax, placement, color):
 
     ax.imshow(territory, extent=[x1, x2, y1, y2], alpha=True)  # Use alpha=True to respect alpha channel
 
+
 def get_territory(x):
     territory_map = np.zeros([19, 19], dtype=int)
     score = 0
     for i in range(19):
         for j in range(19):
-            if x[i, j] == 0:
-                v1 = np.flip(x[:i, j])      # Up direction (column slice above the current position)
-                v2 = x[i+1:, j]             # Down direction (column slice below the current position)
-                h1 = np.flip(x[i, :j])      # Left direction (row slice left of the current position)
-                h2 = x[i, j+1:]             # Right direction (row slice right of the current position)
-
-                territory = None
-                for dir in [v1, v2, h1, h2]:
-                        adj = np.argwhere(dir != 0)
-                        if len(adj) > 0 and x[i, j] == 0:
-                            adj = adj[0]
-                            if territory is None:
-                                territory = dir[adj[0]]
-                            elif dir[adj[0]] != territory:
-                                    territory = 0
-                            else:
-                                pass
-
-                if territory:
-                    score += territory
-                    territory_map[i, j] = territory
-
+            territory_map[i, j] = int(is_territory(x, (i, j)))
+            score += territory_map[i, j]
     return score, territory_map
 
+def from_tuple(tup):
+    return chr(tup[0] + 65) + str(tup[1] + 1)
 
-class KoError(Exception):
-    def __init__(self, message="Ko violation detected!"):
-        super().__init__(message)
-
-class IllegalMoveError(Exception):
-    def __init__(self, message="Illegal move detected!"):
-        super().__init__(message)
 
 def score_game(x, black_prisoners, white_prisoners,komi=6.5):
 
@@ -568,136 +479,160 @@ def plot_number(fig, ax, placement, number, color='white'):
 
     ax.text(x_pos, y_pos, str(number), color=color, fontsize=16, ha='center', va='center')
 
+def SelfCaptureError(Exception):
+    def __init__(self, message="Self-capture detected!"):
+        super().__init__(message)
 
 
-def remove_dead_stones(x):
-    new_x = x.copy()
-    dead_stones = np.zeros(x.shape, dtype=int)
+def legal_move_array(x, color):
+    legal_moves = 1 - np.abs(x)  # Initialize all unoccupied moves to legal
+    libertiless = []
+
+    for i in range(x.shape[0]):
+        for j in range(x.shape[1]):
+
+            if x[i, j] == 0 and not would_be_liberty(x, (i, j), color):
+                libertiless.append((i, j))
+
+    # Set all libertiless to False initially
+    atari = detect_atari_groups(x)
+    for loc in libertiless:
+        legal_moves[loc] = check_eye_move(x, loc, color, atari)
+
+    return legal_moves
+
+def action(loc, x, color, ko_states, move_count=0, acts=None):
+    if not x[loc[0], loc[1]] == 0:
+        raise SpaceOccupiedError('OOPS!')
+    legal = legal_move_array(x.copy(), color)
+    if not legal[loc]:
+        print('Illegal move at ' + str(loc) + ' by player ' + str(color), ' on move ' + str(move_count))
+        x = np.fliplr(x)
+        fig, ax = plot_board(x)
+        ax.imshow(go_board, extent=[0, 24, 0, 18], zorder=-1)
+        plt.show
+        print('done!')
+        plt.pause(2000)
+        raise IllegalMoveError
+
+    x[loc[0], loc[1]] = color
+    last_move = loc[0], loc[1], color
+    y = process_move(x, placement=last_move)
+    if not np.all(y == x):
+        for ko in ko_states:
+            if np.array_equal(y, ko):
+                raise KoError
+            else:
+                ko_states.append(y)
+    return y, ko_states
+
+
+def process_move(x, placement):
+    new_board = x.copy()
+    for i in range(19):
+        for j in range(19):
+            if x[i, j] and not has_liberty(x, tuple((i, j))):
+                new_board[i, j] = 0
+    new_board[placement[0], placement[1]] = placement[2]
+
+    return new_board
+
+
+def is_group_in_atari(x, loc, group=None, liberties=None):
+    loc = np.asarray(loc, dtype=int)
+
+    # Initialize sets if None
+    if group is None:
+        group = set()
+    if liberties is None:
+        liberties = set()
+
+    # Check if location is valid and belongs to the group
+    if not (0 <= loc[0] < x.shape[0] and 0 <= loc[1] < x.shape[1]):
+        return False
+    if x[loc[0], loc[1]] == 0:
+        return False
+    if tuple(loc) in group:
+        return False
+
+    # Add current location to the group
+    group.add(tuple(loc))
+
+    # Check adjacent positions
+    color = x[loc[0], loc[1]]
+    for dir in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+        new_loc = loc + dir
+        if 0 <= new_loc[0] < x.shape[0] and 0 <= new_loc[1] < x.shape[1]:
+            new_color = x[new_loc[0], new_loc[1]]
+            if new_color == 0:
+                liberties.add(tuple(new_loc))
+            elif new_color == color:
+                is_group_in_atari(x, new_loc, group, liberties)
+
+    return len(liberties) == 1
+
+def detect_atari_groups(x):
+    atari_groups = np.zeros(x.shape, dtype=int)
     for i in range(19):
         for j in range(19):
             if x[i, j] != 0:
-                if not is_chain_alive(x, (i, j)):
-                    new_x[i, j] = 0
-                    dead_stones[(i, j)] = x[i, j]
-    return new_x, dead_stones
+                if is_group_in_atari(x, (i, j)):
+                    atari_groups[i, j] = 1
+    return atari_groups
+def remove_dead_stones(x):
+    new_x = x.copy()
+    dead_stones = np.zeros(x.shape, dtype=int)
 
-def end_game(state, x, move_count):
-    print('Game over on move ' + str(move_count) + '!')
+    # Detect atari groups and update the mask
+    ataris = np.nonzero(detect_atari_groups(x))
+    for i, j in zip(*ataris):
+        new_x[i, j] = 0
+        dead_stones[i, j] = x[i, j]
+    for i in range(19):
+        for j in range(19):
+            if is_chain_dead(new_x, (i, j)) or not is_chain_alive(new_x, (i, j)):
+                dead_stones[i, j] = x[i, j]
+                new_x[i, j] = 0
+    return new_x, dead_stones
+def end_game(x, move_count):
+    print('Scoring...')
     y, dead = remove_dead_stones(x)
-    fancy_print(dead)
     num_removed_stones = len(np.nonzero(dead)[0])
+    print('Game has ended on round ' + str(move_count))
     print('Removed ' + str(num_removed_stones) + ' dead stones!')
     x = y
     score, territory, winner = score_game(x, 0, 0)
     print('Black score: ' + str(score) + ' points')
     print('Winner: ' + ('Black' if winner == 1 else 'White'))
-    print('Scoring...')
-
 
     fig, ax = plot_board(x, territory=territory, fig=None, ax=None)
     fig, ax = plot_board(dead, stone_opacity=0.5, fig=fig, ax=ax)
     ax.imshow(go_board, extent=[0, 24, 0, 18], zorder=-1)
     plt.show()
-def run_from_list():
-    state = [
-        (4, 3), (4, 2), (5, 3), (5, 2), (6, 3), (6, 2), (6, 4), (7, 4),
-        (6, 5), (7, 5), (6, 6), (7, 6), (6, 7), (7, 7), (5, 5), (6, 8),
-        (5, 7), (5, 8), (4, 7), (4, 8), (4, 4), (7, 3), (4, 5), (3, 5),
-        (4, 6), (3, 6), (19, 19), (3, 3), (19, 18), (3, 4), (18, 19),
-        (3, 7), (5,10), (16, 1), (17, 1), (16, 2), (17, 2), (17, 3),
-        (18, 2), (17, 4), (18, 3), (1, 17), (17, 5), (18, 4), (19, 5),
-        (19, 4), (19, 3), (18, 5), (19, 1), (1,1), (2, 1), (8,8), (1, 2), (9, 1),
-    ]
+
+
+def load_sgf(sgf):
+    game_5 = open(sgf, 'r')
+    text = game_5.read()
+    pattern = r';([BW])\[([a-z]{2})\]'
+    matches = re.findall(pattern, text)
+    for i in range(len(matches)):
+        matches[i] = (matches[i][0], from_bicharacter(matches[i][1]))
+    return matches
+def run_from_goban():
     x = np.zeros([19, 19], dtype=int)
     ko_states = []
+    sgf = r'C:\Users\Jasper\Documents\pythonProject31\static\game_1.sgf'
+    acts = load_sgf(sgf)
     move_count = 0
-    last_player_passed = False
-
-    for action in state:
-        action = minus_one(action)
+    for _, loc in acts:
         color = 1 if move_count % 2 == 0 else -1
-
-        if isinstance(action, str) and action.lower() == 'pass':
-            if last_player_passed:
-                print('Game over!')
-                break
-            last_player_passed = True
-            move_count += 1
-            continue
-        last_player_passed = False
-
-        y = move(action, x, color, state, ko_states)
-
         move_count += 1
-        n = len(state) - 1
-        if move_count == n:
-            print('done!')
-            end_game(state, y, move_count)
+        x, ko_states = action(loc, x, color, ko_states, move_count, acts)
+    x = np.fliplr(x)
+    end_game(x, move_count)
 
-def legal_move_array(x, color):
-    legal_moves = 1-np.abs(x)
-    libertiless = []
-    for i in range(19):
-        for j in range(19):
-             if x[i, j] == 0 and not is_liberty(x, (i, j), 1):
-                libertiless.append((i, j))
+if __name__ == '__main__':
+    x = np.zeros([19, 19], dtype=int)
 
-    for loc in libertiless:
-        try:
-            _ = attempt_eye_capture(x, loc, color)
-            x[loc[0], loc[1]] = 0
-            legal_moves[loc] = True
-        except ValueError:
-            legal_moves[loc] = False
-
-    return legal_moves
-
-def action(loc, x, color, ko_states):
-    if not x[loc[0], loc[1]] == 0:
-        raise SpaceOccupiedError('OOPS!')
-
-    legal = legal_move_array(x, color)
-
-    if not legal[loc]:
-        raise IllegalMoveError
-
-    x[loc[0], loc[1]] = color
-    last_move = loc[0], loc[1], color
-    y = process_move(x, last_move=last_move)
-    ko_states.add(tuple(map(tuple, y)))
-    if tuple(map(tuple, y)) in ko_states:
-        raise KoError
-    return y, ko_states
-
-
-def run_from_goban():
-    x = np.array([
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, -1, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, -1, 0, 0, 0, 0, 0, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-        [0, -1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0],
-        [0, 0, -1, -1, -1, -1, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, -1, 1, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, -1, 0, -1, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 1, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [-1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
-        [0, 0, 0, -1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
-    ])
-    ko_states = set(tuple(map(tuple, x)))
-    x, ko_states = action((11, 12), x, 1, ko_states=ko_states)
-    x, ko_states = action((11, 13), x, -1, ko_states=ko_states)
-
-    fig, ax = plot_board(x)
-    ax.imshow(go_board, extent=[0, 24, 0, 18], zorder=-1)
-    plt.show()
-
-run_from_goban()
+    run_from_goban()
