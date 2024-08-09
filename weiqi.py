@@ -74,7 +74,7 @@ def show_ring(fig, ax, placement, color, ring_radius=1, ring_thickness=10, opaci
     extent = (np.array(extent) * 0.1)
     ax.imshow(ring, extent=extent)
 
-def plot_board(x, color=1, territory=None, ring_moves=None,c move_count=None, stone_opacity=1.0, fig=None, ax=None):
+def plot_board(x, color=1, territory=None, ring_moves=None, move_count=None, stone_opacity=1.0, fig=None, ax=None):
     if color == 1:
         color = 'black'
     else:
