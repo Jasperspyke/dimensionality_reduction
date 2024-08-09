@@ -84,8 +84,8 @@ def plot_board(x, color=1, territory=None, ring_moves=None, move_count=None, sto
     fig.patch.set_facecolor((1, 1, .8))
     ax.set_xlim([0, 24])
     ax.set_ylim([0, 18])
-    plt.xticks(ticks=np.arange(1,20) * 24/19 -0.633, labels=np.arange(1, 20))
-    plt.yticks(ticks=np.arange(1,20) * 18.45/20 - 0.2, labels=np.arange(1, 20))
+    plt.xticks(ticks=np.arange(1, 20) * 24/19 -0.633, labels=np.arange(1, 20))
+    plt.yticks(ticks=np.arange(1, 20) * 18.45/20 - 0.2, labels=np.arange(1, 20))
     if x.any():
         black_state = list(np.argwhere(x == 1))
         white_state = list(np.argwhere(x == -1))
@@ -425,7 +425,7 @@ def run_from_goban():
     x = np.zeros([19, 19], dtype=int)
     ko_states = set()
     tracker = BoardTracker()
-    sgf = r'C:\Users\Jasper\Documents\pythonProject31\static\game_1002.sgf'
+    sgf = r'C:\Users\Jasper\Documents\pythonProject31\static\game_4.sgf'
     acts = load_sgf(sgf)
     move_count = 0
 

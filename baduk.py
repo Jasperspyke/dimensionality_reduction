@@ -201,6 +201,7 @@ class BoardTracker:
 
 def groupify(tracker, loc, color):
     t0 = time.perf_counter()
+    connections = 0
     new_group = {loc}
     structure = tracker.white.groups if color == -1 else tracker.black.groups
 
@@ -214,20 +215,22 @@ def groupify(tracker, loc, color):
                 if new_loc in s:
                     new_group = new_group.union(s)
                     structure.remove(s)
+                    connections += 1
     structure.append(new_group)
     t1 = time.perf_counter()
     time_consuming_functions['groupify'] += t1 - t0
-    return tracker
+    return tracker, connections
 
 
 def process(board, loc, color, tracker, ko_states):
     global time_consuming_functions
     t0 = time.perf_counter()
-    tracker = groupify(tracker, loc, color)
+    tracker, connections = groupify(tracker, loc, color)
     friend = tracker.white if color == -1 else tracker.black
     enemy = tracker.white if color == 1 else tracker.black
     friend.liberties = [0] * len(friend.groups)
     new_board = board.copy()
+    self_liberties = 0
     adjacent_allies = []
     adjacent_enemies = []
 
@@ -239,7 +242,8 @@ def process(board, loc, color, tracker, ko_states):
             elif board[new_loc[0], new_loc[1]] == color:
                 adjacent_allies.append(new_loc)
             else:
-                pass
+                self_liberties += 1
+
 
     for i, stone in enumerate(adjacent_enemies):
         stone = tuple(stone)
@@ -259,13 +263,15 @@ def process(board, loc, color, tracker, ko_states):
     for i, stone in enumerate(adjacent_allies):
         stone = tuple(stone)
         if not any(stone in group for group in friend.groups):
-            print('stone: ', stone)
-            print('groups: ', friend.groups)
-            print('board: ', board)
             sys.exit(1)
         for group in friend.groups:
             if stone in group:
-                lib = count_liberties(group, new_board)
+                #lib = count_liberties(group, new_board)
+                try:
+                    lib = friend.liberties[i] - connections
+                except IndexError:
+                    pass
+
                 if lib == 0:
                     raise SelfCaptureError
                 else:

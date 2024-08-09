@@ -102,7 +102,6 @@ class Node:
             new_board = self.board.copy()
             new_board, __ = action(new_board, loc, self.color, self.tracker)
             val = np.random.rand() / 10 + 0.5
-            tsc['expand'] += time.perf_counter() - tstart
             new_state = {'board': new_board, 'loc': tuple(loc), 'color': self.color*-1, 'passed': False,  'number': 1.01, 'policy': policy[loc[0], loc[1]], 'value': val, 'is_leaf': True, 'tracker': None, 'ko_states': None}
             new_state = Node(new_state, self)
             children = np.append(children, new_state)
