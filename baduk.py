@@ -2,146 +2,86 @@ import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import weiqi as wq
 import sys
 import time
-from inspect import stack
+import inspect
+from inspect import stack, getargvalues
 time_consuming_functions = {
-    'process_move': 0,
-    'is_group_in_atari': 0,
-    'has_liberty': 0,
+    'process': 0,
     'would_be_liberty': 0,
     'check_eye_move': 0,
     'action': 0,
-    'detect_atari_groups': 0,
-    'legal_move_array': 0,
-    'is_stone_in_atari': 0,
-    'check_eye_move': 0
+    'count_liberties': 0,
+    'groupify': 0,
+    'friend': 0
+
 
 }
-x = np.zeros([19, 19], dtype=np.int8)
-import numpy as np
-import time
+ko_states = set()
 
 
-def is_group_in_atari(x, loc, group=None, liberties=None):
-    global time_consuming_functions
-    t0 = time.perf_counter()
+def encode(x):
+    board = x.copy()
+    board += 1
+    hashed = ''
+    for i in range(19):
+        for j in range(19):
+            hashed += (str(board[i, j]))
+    return hashed
 
-    # Use a list instead of a set for group and liberties
-    if group is None:
-        group = []
-    if liberties is None:
-        liberties = []
+def fancy_string(matrix):
 
-    # Stack for depth-first search
-    stack = [np.asarray(loc, dtype=int)]
-    color = x[loc[0], loc[1]]
-    shape = x.shape
 
-    while stack:
-        current = stack.pop()
+    num_rows, num_cols = matrix.shape
 
-        if tuple(current) in group:
-            continue
+    # Convert the matrix to string type
+    matrix_str = matrix.astype(str)
 
-        group.append(tuple(current))
+    # Create column index (as a row) and add as the first row
+    col_index = np.arange(num_cols).astype(str)
+    header_row = np.insert(col_index, 0, '')
+    matrix_with_col_index = np.vstack([header_row, np.column_stack([np.arange(num_rows).astype(str), matrix_str])])
 
-        # Check adjacent positions
-        for dir in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-            new_loc = current + dir
-            if 0 <= new_loc[0] < shape[0] and 0 <= new_loc[1] < shape[1]:
-                new_color = x[new_loc[0], new_loc[1]]
-                if new_color == 0:
-                    if tuple(new_loc) not in liberties:
-                        liberties.append(tuple(new_loc))
-                        if len(liberties) > 1:
-                            t1 = time.perf_counter()
-                            time_consuming_functions['is_group_in_atari'] += t1 - t0
-                            return False
-                elif new_color == color and tuple(new_loc) not in group:
-                    stack.append(new_loc)
+    # Create DataFrame
+    df = pd.DataFrame(matrix_with_col_index)
 
-    t1 = time.perf_counter()
-    time_consuming_functions['is_group_in_atari'] += t1 - t0
-    return len(liberties) == 1
+    return df.to_string(index=False, header=False) + '\n' + '___________________________________________________________'
 
-def action(x, loc, color, move_count):
+class IllegalMoveError(Exception):
+    def __init__(self, message="Illegal move!"):
+        super().__init__(message)
+class KoError(Exception):
+    def __init__(self, message="Ko violation detected!"):
+        super().__init__(message)
+class SpaceOccupiedError(Exception):
+    def __init__(self, message="Space Already Taken!"):
+        super().__init__(message)
+
+def action(x, loc, color, tracker):
     global time_consuming_functions
     t0 = time.perf_counter()
     # Update the board with the new move
-    x[loc[0], loc[1]] = color
     last_move = (loc[0], loc[1])
+    legals = tracker.white.legal_moves if color == -1 else tracker.black.legal_moves
+    if not legals[loc[0], loc[1]]:
+        fancy_print(x)
+        fancy_print(legals)
+        raise IllegalMoveError
+    x[loc[0], loc[1]] = color
+
 
     # Process captures return the updated board
-    y = process_move(x, last_move, color)
-    t1 = time.perf_counter()
-    time_consuming_functions['action'] += t1 - t0
-    return y
+    return x, tracker
 
 
-def identify_groups(board):
-    """Identifies groups of stones on the board.
 
-    Args:
-        board: A 19x19 numpy array representing the Go board.
-
-    Returns:
-        A list of groups, where each group is a list of coordinates.
-    """
-
-    global time_consuming_functions
-    t0 = time.perf_counter()
-
-    groups = []
-    visited = set()
-
-    for row in range(19):
-        for col in range(19):
-            if board[row, col] != 0 and (row, col) not in visited:
-                group = []
-                stack = [(row, col)]
-                visited.add((row, col))
-
-                while stack:
-                    current_pos = stack.pop()
-                    group.append(current_pos)
-
-                    for right, left, down, up in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                        neighbor_pos = (current_pos[0] + down, current_pos[1] + right)
-                        if 0 <= neighbor_pos[0] < 19 and 0 <= neighbor_pos[1] < 19:
-                            if board[neighbor_pos] == board[current_pos] and neighbor_pos not in visited:
-                                stack.append(neighbor_pos)
-                                visited.add(neighbor_pos)
-
-                groups.append(group)
-
-    t1 = time.perf_counter()
-    time_consuming_functions['identify_groups'] += t1 - t0
-    return groups
-def process_move(x, loc, color):
-    t0 = time.perf_counter()
-    # Create a copy of the board to avoid modifying the original
-    new_board = x.copy()
-
-    # Remove stones with no liberties
-    for i in range(19):
-        for j in range(19):
-            if x[i, j] and not has_liberty(x, (i, j)):
-                new_board[i, j] = 0
-
-    # Set the new move on the board
-    new_board[loc[0], loc[1]] = color
-
-    t1 = time.perf_counter()
-    time_consuming_functions['process_move'] += t1 - t0
-    return new_board
 def would_be_liberty(x, action, color):
     global time_consuming_functions
     t0 = time.perf_counter()
 
     if x[action[0], action[1]] != 0:
-        raise SpaceOccupiedError()
+        # should maybe error here
+        return False
 
     x[action[0], action[1]] = color
     stack = [action]
@@ -161,171 +101,237 @@ def would_be_liberty(x, action, color):
                     stack.append((new_row, new_col))
 
     x[action[0], action[1]] = 0
+
     time_consuming_functions['would_be_liberty'] += time.perf_counter() - t0
     return False
 
-import numpy as np
 
-import numpy as np
+def fancy_print(matrix):
+    matrix = np.fliplr(np.flipud(np.fliplr(matrix.transpose())))
+    num_rows, num_cols = matrix.shape
 
-def detect_atari_groups(board):
+    # Convert the matrix to string type
+    matrix_str = matrix.astype(str)
+
+    # Create column index (as a row) and add as the first row
+    col_index = np.arange(num_cols).astype(str)
+    header_row = np.insert(col_index, 0, '')
+    matrix_with_col_index = np.vstack([header_row, np.column_stack([np.arange(num_rows).astype(str), matrix_str])])
+
+    # Create DataFrame
+    df = pd.DataFrame(matrix_with_col_index)
+
+    # Print DataFrame
+    print(df.to_string(index=False, header=False))
+    print('___________________________________________________________')
+
+def check_eye_move(x, action, color, tracker):
     global time_consuming_functions
     t0 = time.perf_counter()
-    """Detects Atari groups on a Go board efficiently.
-
-    Args:
-        board: A 19x19 numpy array representing the Go board.
-
-    Returns:
-        A 19x19 numpy array indicating whether each position is in an Atari group.
-    """
-
-    atari_groups = np.zeros_like(board, dtype=int)
-
-    for i in range(19):
-        for j in range(19):
-            if board[i, j] != 0 and is_stone_in_atari(board, (i, j)):
-                atari_groups[i, j] = 1
-    t1 = time.perf_counter()
-    time_consuming_functions['detect_atari_groups'] += t1 - t0
-    return atari_groups
-
-
-def is_stone_in_atari(board, position):
-    """Checks if a stone is in atari.
-
-    Args:
-        board: A 19x19 numpy array representing the Go board.
-        position: A tuple (row, col) representing the stone's position.
-
-    Returns:
-        True if the stone is in atari, False otherwise.
-    """
-
-    color = board[position]
-    liberties = 0
-    visited = set()
-    queue = [position]
-
-    while queue:
-        x, y = queue.pop(0)
-        if (x, y) in visited:
-            continue
-        visited.add((x, y))
-
-        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < 19 and 0 <= ny < 19:
-                if board[nx, ny] == 0:
-                    liberties += 1
-                elif board[nx, ny] == color and (nx, ny) not in visited:
-                    queue.append((nx, ny))
-
-    return liberties == 1
-def check_eye_move(board, action, color, atari_groups):
-    """Checks if a move is an eye move.
-
-    An eye move is a move that creates a true eye for the player.
-
-    Args:
-        board: A 19x19 numpy array representing the Go board.
-        action: A tuple (row, col) representing the move to check.
-        color: The color of the move (1 or -1).
-        atari_groups: A 19x19 numpy array indicating Atari groups.
-
-    Returns:
-        True if the move is an eye move, False otherwise.
-    """
-
-    global time_consuming_functions
-    t0 = time.perf_counter()
-
-    # Check if any adjacent position is in atari
-    for dr, dc in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-        new_loc = np.array(action) + np.array((dr, dc))
-        if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19 and atari_groups[new_loc[0], new_loc[1]]:
-            return False
-
-    # Check if all surrounding positions are either the same color or empty
-    for dr in range(-1, 2):
-        for dc in range(-1, 2):
-            if dr == 0 and dc == 0:
-                continue  # Skip the center position
-            new_loc = np.array(action) + np.array((dr, dc))
-            if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19 and board[new_loc[0], new_loc[1]] != color:
-                return False
+    enemy = tracker.white if color == 1 else tracker.black
+    for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+        new_loc = np.array(action) + np.array(direction)
+        if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19:
+            if x[new_loc[0], new_loc[1]] == -color:
+                for group in enemy.groups:
+                    if tuple(new_loc) in group:
+                        if count_liberties(group, x) == 1:
+                            time_consuming_functions['check_eye_move'] += time.perf_counter() - t0
+                            return True
 
     time_consuming_functions['check_eye_move'] += time.perf_counter() - t0
-    return True
-
-def has_liberty(board, location):
-    global time_consuming_functions
-    t0 = time.perf_counter()
-    """Checks if a group has any liberties using an iterative approach.
-
-    Args:
-        board: A 19x19 numpy array representing the Go board.
-        location: A tuple (row, col) representing the position to check.
-
-    Returns:
-        True if the group has at least one liberty, False otherwise.
-    """
-
-    stack = [location]
-    visited = set()
-    row, col = location
-    color = board[row, col]
-
-    while stack:
-        x, y = stack.pop()
-        if (x, y) in visited:
-            continue
-
-        visited.add((x, y))
-
-        for dr, dc in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-            nr, nc = x + dr, y + dc
-            if 0 <= nr < 19 and 0 <= nc < 19:
-                if board[nr, nc] == 0:
-                    return True
-                if board[nr, nc] == color and (nr, nc) not in visited:
-                    stack.append((nr, nc))
-    time_consuming_functions['has_liberty'] += time.perf_counter() - t0
-
     return False
 
-def legal_move_array(board, color):
+# group is a set of tuples
+def count_liberties(group, board):
+    t0 = time.perf_counter()
+    liberties = set()
+    for stone in group:
+        x, y = stone
 
+        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            new_x, new_y = x + dx, y + dy
+            if 0 <= new_x < 19 and 0 <= new_y < 19 and board[new_x, new_y] == 0:
+                liberties.add((new_x, new_y))
+    t1 = time.perf_counter()
+    time_consuming_functions['count_liberties'] += t1 - t0
+    return len(liberties)
+
+class ColorCategory:
+    def __init__(self, color):
+        self.color = color
+        self.legal_moves = np.ones([19, 19], dtype=int)
+        self.groups = []
+        self.liberties = []
+
+    def __repr__(self):
+        return self.color + ' group: ' + str(self.groups)
+
+    def __contains__(self, item):
+        return item in self.group
+
+    def update_legal_moves(self, board):
+
+
+
+        self.legal_moves = new_legals
+
+class BoardTracker:
+    def __init__(self):
+        self.white = ColorCategory('white')
+        self.black = ColorCategory('black')
+        self.legal_moves = np.ones([19, 19], dtype=int)
+
+
+
+    def __refsdfpr__(self):
+
+        arr = np.zeros([19, 19], dtype=int)
+        s1 = 'White: ' + str(self.white) + 'Black: ' + str(self.black)
+        for i, group in enumerate(self.black.groups):
+            for loc in group:
+                arr[loc] += i + 1
+        for i, group in enumerate(self.white.groups):
+            for loc in group:
+                arr[loc] -= i + 1
+
+
+
+        return fancy_string(arr)
+
+def groupify(tracker, loc, color):
+    t0 = time.perf_counter()
+    new_group = {loc}
+    structure = tracker.white.groups if color == -1 else tracker.black.groups
+
+    for dir in ((0, 1), (0, -1), (-1, 0), (1, 0)):
+        dir = np.array(dir)
+        new_loc = tuple(dir + loc)
+
+        if any(new_loc in s for s in structure):
+
+            for s in structure:
+                if new_loc in s:
+                    new_group = new_group.union(s)
+                    structure.remove(s)
+    structure.append(new_group)
+    t1 = time.perf_counter()
+    time_consuming_functions['groupify'] += t1 - t0
+    return tracker
+
+
+def process(board, loc, color, tracker, ko_states):
     global time_consuming_functions
     t0 = time.perf_counter()
-    """Calculates legal moves for a given player.
+    tracker = groupify(tracker, loc, color)
+    friend = tracker.white if color == -1 else tracker.black
+    enemy = tracker.white if color == 1 else tracker.black
+    friend.liberties = [0] * len(friend.groups)
+    new_board = board.copy()
+    adjacent_allies = []
+    adjacent_enemies = []
 
-    Args:
-        board: A 19x19 numpy array representing the Go board.
-        color: The color of the player (1 or -1).
+    for dir in ((1, 0), (-1, 0), (0, -1), (0, 1)):
+        new_loc = np.array(loc) + np.array(dir)
+        if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19:
+            if board[new_loc[0], new_loc[1]] == -color:
+                adjacent_enemies.append(new_loc)
+            elif board[new_loc[0], new_loc[1]] == color:
+                adjacent_allies.append(new_loc)
+            else:
+                pass
 
-    Returns:
-        A 19x19 numpy array indicating legal moves.
-    """
+    for i, stone in enumerate(adjacent_enemies):
+        stone = tuple(stone)
+        for group in enemy.groups:
+            if stone in group:
+                lib = count_liberties(group, new_board)
+                if lib == 0:
+                    for location in group:
+                        new_board[location] = 0
+                    enemy.groups.remove(group)
+                    for st in group:
+                        enemy.legal_moves[st] = 1
+                        friend.legal_moves[st] = 1
+                else:
+                    enemy.liberties[i] = lib
 
-    legal_moves = 1 - np.abs(board)  # Initialize all unoccupied moves to legal
-    libertiless = []
+    for i, stone in enumerate(adjacent_allies):
+        stone = tuple(stone)
+        if not any(stone in group for group in friend.groups):
+            print('stone: ', stone)
+            print('groups: ', friend.groups)
+            print('board: ', board)
+            sys.exit(1)
+        for group in friend.groups:
+            if stone in group:
+                lib = count_liberties(group, new_board)
+                if lib == 0:
+                    raise SelfCaptureError
+                else:
+                    try:
+                        friend.liberties[i] = lib
+                    except IndexError:
+                        pass
 
+    encoded = encode(new_board)
+    if encoded in ko_states:
+        print('Ko violation detected! at ', loc)
+        board[loc[0], loc[1]] = 999
+        fancy_print(board)
+        for j, i in enumerate(ko_states):
+            if i == encoded:
+                print('Ko state: ')
+                print('j is: ', j)
+                ko_states = list(ko_states)
+                print(ko_states[j])
+                print('encoded is: ', encoded)
+                print(len(ko_states))
+        raise KoError
+    ko_states.add(encoded)
 
-    for i in range(board.shape[0]):
-        for j in range(board.shape[1]):
-            if board[i, j] == 0:
-                if not would_be_liberty(board, (i, j), color):
-                    libertiless.append((i, j))
+    libertiless_spaces = []
 
-    # Set all libertiless to False initially
+    # look around the new stone for libertiless spaces
+    for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+        new_loc = np.array(loc) + np.array(direction)
+        if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19:
+            if new_board[new_loc[0], new_loc[1]] == 0:
+                if not would_be_liberty(new_board, new_loc, color):
+                    libertiless_spaces.append(tuple(new_loc))
+    friend_start = time.perf_counter()
+    friend.legal_moves[loc] = 0
+    for loc in libertiless_spaces:
+        friend.legal_moves[loc] = 0
+        for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            new_loc = np.array(loc) + np.array(direction)
+            if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19:
+                if new_board[new_loc[0], new_loc[1]] == -color:
+                    for group in enemy.groups:
+                        if tuple(new_loc) in group:
+                            if count_liberties(group, new_board) == 1:
+                                friend.legal_moves[loc] = 1
+                                break
 
-    # THE PROBLEM IS HERE
-    # this is the slow
-    atari_groups = detect_atari_groups(board)
-    for loc in libertiless:
-        legal_moves[loc] = check_eye_move(board, loc, color, atari_groups)
+    enemy.legal_moves[loc] = 0
+    for loc in libertiless_spaces:
+        enemy.legal_moves[loc] = 0
+        for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            new_loc = np.array(loc) + np.array(direction)
+            if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19:
+                if new_board[new_loc[0], new_loc[1]] == color:
+                    for group in friend.groups:
+                        if tuple(new_loc) in group:
+                            if count_liberties(group, new_board) == 1:
+                                enemy.legal_moves[loc] = 1
+                                break
+    friend_end = time.perf_counter()
+    time_consuming_functions['friend'] += friend_end - friend_start
     t1 = time.perf_counter()
-    time_consuming_functions['legal_move_array'] += t1 - t0
+    time_consuming_functions['process'] += t1 - t0
 
-    return legal_moves
+
+    if len(ko_states) > 2:
+
+        ko_states = set(list(ko_states)[-2:])
+    return new_board, tracker, ko_states
