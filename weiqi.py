@@ -2,12 +2,16 @@ import numpy as np
 import re
 import matplotlib.pyplot as plt
 from baduk import *
+
 # load png images in matplotlib and display them
-go_board = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\dimensionality_reduction\static\go_board.png')[16:, 218:741, :]
-black_piece = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\dimensionality_reduction\static\go_black.png')
-white_piece = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\dimensionality_reduction\static\go_white.png')
-black_territory = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\dimensionality_reduction\static\obama_2.png')
-white_territory = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\dimensionality_reduction\static\biden_2.png')
+
+static = 'static'
+go_board = plt.imread(os.path.join(static, 'go_board.png'))[16:, 218:741, :]
+black_piece = plt.imread(os.path.join(static, 'go_black.png'))
+white_piece = plt.imread(os.path.join(static, 'go_white.png'))
+black_territory = plt.imread(os.path.join(static, 'obama_2.png'))
+white_territory = plt.imread(os.path.join(static, 'biden_2.png'))
+
 
 
 def show_stones(fig, ax, placements, ring=False, count_n_stones=None, opacity=1.0):
@@ -420,7 +424,7 @@ def run_from_goban():
     x = np.zeros([19, 19], dtype=int)
     ko_states = set()
     tracker = BoardTracker()
-    sgf = r'C:\Users\Jasper\Documents\pythonProject31\dimensionality_reduction\static\game_4.sgf'
+    sgf = os.path.join(static, 'game_4.sgf')
     acts = load_sgf(sgf)
     move_count = 0
 
