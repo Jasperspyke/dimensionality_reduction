@@ -1,10 +1,6 @@
 import numpy as np
-import sys
 import re
-import string
 import matplotlib.pyplot as plt
-import pandas as pd
-import matplotlib
 from baduk import *
 # load png images in matplotlib and display them
 go_board = plt.imread(r'C:\Users\Jasper\Documents\pythonProject31\dimensionality_reduction\static\go_board.png')[16:, 218:741, :]

@@ -1,11 +1,7 @@
-import networkx as nx
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 import sys
 import time
-import inspect
-from inspect import stack, getargvalues
 time_consuming_functions = {
     'process': 0,
     'would_be_liberty': 0,
@@ -14,11 +10,10 @@ time_consuming_functions = {
     'count_liberties': 0,
     'groupify': 0,
     'friend': 0
-
-
 }
-ko_states = set()
 
+
+ko_states = set()
 
 def encode(x):
     board = x.copy()
@@ -169,12 +164,6 @@ class ColorCategory:
 
     def __contains__(self, item):
         return item in self.group
-
-    def update_legal_moves(self, board):
-
-
-
-        self.legal_moves = new_legals
 
 class BoardTracker:
     def __init__(self):

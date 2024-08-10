@@ -1,7 +1,6 @@
 from baduk import *
-from inspect import stack
-import json
 import copy
+from concurrent.futures import ThreadPoolExecutor
 
 tsc = {
     'get_uct': 0,
@@ -129,16 +128,8 @@ class Node:
     def select_uct(self):
         global tsc
         tstart = time.perf_counter()
-        assert not self.is_leaf
-        assert len(self.children) > 0
-        uct_values = np.empty(0)
-        for child in self.children:
-
-            uct_values = np.append(uct_values, get_uct(child))
+        uct_values = np.array([get_uct(child) for child in self.children])
         where_max = np.argmax(uct_values)
-        second_where_max = np.argmax(uct_values)
-        c1 = self.children[where_max]
-        c2 = self.children[second_where_max]
         tend = time.perf_counter()
         tsc['select_uct'] += tend - tstart
         return self.children[where_max]
