@@ -1,7 +1,8 @@
-from baduk import *
 import copy
-from concurrent.futures import ThreadPoolExecutor
+from baduk import *
+from model import *
 
+# Time statistics collector
 tsc = {
     'get_uct': 0,
     'node init': 0,
@@ -9,41 +10,39 @@ tsc = {
     'policy': 0,
     'backpropagate': 0,
     'select_uct': 0,
-
 }
-def get_uct(node, c=1, k=5):
-    return node.value / (k * node.number) + np.sqrt(np.log(k * node.number) / (k * node.number + 1)) * node.policy * c
 
 
-def pdf(loc, mean, std):
-    x = loc[0]
-    y = loc[1]
-    distance = np.sqrt((x - mean[0]) ** 2 + (y - mean[1]) ** 2)
-    y = 1 / (std * np.sqrt(2 * np.pi)) * np.exp(-distance / (2 * std ** 2))
-    return y
+def get_uct(node):
+    """Calculate the UCT (Upper Confidence Bound for Trees) value."""
+    explore = np.sqrt(np.log(node.parent.number) / node.number)
+    exploit = node.value / node.number
+    return explore, exploit
 
 
 def scuffed_policy(legal_moves):
+    """A simple policy function based on distance from the center."""
     global tsc
     tstart = time.perf_counter()
 
     mean = (4, 4)
     std = 2
-    x = np.ones([19, 19], dtype=int)
 
     y = np.zeros([19, 19])
-    for i in range(19):
-        for j in range(19):
-            y[i, j] = pdf((i, j), mean, std)
-            if not [i, j] in legal_moves:
-                y[i, j] = 0
-    y = y / np.sum(y)
+    x_coords, y_coords = np.indices(y.shape)
+    distances = np.sqrt((x_coords - mean[0]) ** 2 + (y_coords - mean[1]) ** 2)
+    y = 1 / (std * np.sqrt(2 * np.pi)) * np.exp(-distances / (2 * std ** 2))
+
+    y[~legal_moves] = 0
+    y /= np.sum(y)
+
     tend = time.perf_counter()
     tsc['policy'] += tend - tstart
     return y
 
 
 class Node:
+    """Node in a Monte Carlo Tree Search (MCTS) tree."""
 
     def __init__(self, state, parent=None):
         global tsc
@@ -65,7 +64,6 @@ class Node:
 
         if self.tracker is None:
             tend = time.perf_counter()
-
             tsc['node init'] += tend - tstart
             self.ko_states = parent.ko_states
 
@@ -74,45 +72,74 @@ class Node:
             tracky.black = copy.deepcopy(parent.tracker.black)
 
             self.tracker = BoardTracker()
-
             self.tracker.white = tracky.white
             self.tracker.black = tracky.black
 
-
-            self.board, self.tracker, self.ko_states = process(self.board, self.loc, self.color, self.tracker, self.ko_states)
+            self.board, self.tracker, self.ko_states = process(
+                self.board, self.loc, self.color, self.tracker, self.ko_states
+            )
             temp = self.tracker.white
             self.tracker.white = self.tracker.black
             self.tracker.black = temp
 
-        self.legal_actions = self.tracker.white.legal_moves if self.color == -1 else self.tracker.black.legal_moves
+        self.legal_actions = (
+            self.tracker.white.legal_moves
+            if self.color == -1
+            else self.tracker.black.legal_moves
+        )
 
     def expand(self):
+        """Expand the node by adding children for each legal move."""
         assert len(self.children) == 0
         global tsc
         tstart = time.perf_counter()
         legal_list = np.argwhere(self.legal_actions)
         if len(legal_list) == 0:
+            print('max depth is: ', count_max_depth(root))
             raise ValueError('No legal moves!')
         count = 0
         children = np.empty(0, dtype=Node)
-        policy = scuffed_policy(legal_list)
+        x = self.board
+        x_white = x == -1
+        x_black = x == 1
+        x_empty = x == 0
+        x = np.stack((x_white, x_black, x_empty), axis=0, dtype=float)
+        x = torch.tensor(x, dtype=torch.float32).clone().detach().unsqueeze(0)
+        policy, value = policy_net(x)
+        policy = policy.detach().numpy()
+        value = value.detach().numpy()
+    #    value = np.random.rand()
+
         for loc in np.argwhere(self.legal_actions):
             count += 1
             new_board = self.board.copy()
             new_board, __ = action(new_board, loc, self.color, self.tracker)
-            val = np.random.rand() / 10 + 0.5
-            new_state = {'board': new_board, 'loc': tuple(loc), 'color': self.color*-1, 'passed': False,  'number': 1.01, 'policy': policy[loc[0], loc[1]], 'value': val, 'is_leaf': True, 'tracker': None, 'ko_states': None}
+            new_state = {
+                'board': new_board,
+                'loc': tuple(loc),
+                'color': self.color * -1,
+                'passed': False,
+                'number': self.number + 1,
+                'policy': policy[loc[0], loc[1]],
+                'value': value,
+                'is_leaf': True,
+                'tracker': None,
+                'ko_states': None,
+            }
             new_state = Node(new_state, self)
             children = np.append(children, new_state)
-
+        tend = time.perf_counter()
+        print(self.board)
+        tsc['expand'] += tend - tstart
         self.children = children
         self.is_leaf = False
-
+        assert len(self.children) == len(legal_list)
 
     def __repr__(self):
-        st = 'I am a node named ' + str(id(self)) + '.'
-        return st
+        return f'I am a node named {id(self)}.'
+
     def backpropagate(self):
+        """Propagate the results up the tree."""
         global tsc
         tstart = time.perf_counter()
         z = self.value
@@ -123,12 +150,17 @@ class Node:
             node.value += z
         tsc['backpropagate'] += time.perf_counter() - tstart
 
-
-     # find the child with the highest UCT value and return it
     def select_uct(self):
+        """Select the child with the highest UCT value."""
         global tsc
         tstart = time.perf_counter()
-        uct_values = np.array([get_uct(child) for child in self.children])
+        uct_values = []
+        c = 0.50
+        for child in self.children:
+            explore, exploit = get_uct(child)
+            uct_values.append([c * explore + exploit])
+        uct_values = np.array(uct_values)
+        print(uct_values)
         where_max = np.argmax(uct_values)
         tend = time.perf_counter()
         tsc['select_uct'] += tend - tstart
@@ -136,6 +168,7 @@ class Node:
 
 
 def dfs_child_count(root):
+    """Perform a depth-first search to count all nodes."""
     visited = set()
     count = 0
     stack = [root]
@@ -150,26 +183,36 @@ def dfs_child_count(root):
                     stack.append(child)
 
     return count
+
+
 def descend(node):
+    """Descend the tree to a leaf node."""
     depth = 0
     while not node.is_leaf:
         node = node.select_uct()
         depth += 1
+    print('depth is: ', depth)
     return node
 
+
 def ascend(node):
+    """Ascend the tree to the root."""
     while node.parent is not None:
         node = node.parent
     return node
 
+
 def count_max_depth(node):
+    """Count the maximum depth of the tree."""
     depth = 0
     while not node.is_leaf:
         node = node.select_uct()
         depth += 1
     return depth
 
+
 def iteration(node):
+    """Perform one iteration of the MCTS algorithm."""
     node = descend(node)
     node.expand()
     node = node.select_uct()
@@ -177,18 +220,29 @@ def iteration(node):
     node = ascend(node)
 
 
+# Initialize the root node and start the iterations
 x = np.zeros([19, 19], dtype=int)
-initial_state = {'board': x, 'loc': None, 'color': 1, 'passed': False, 'number': 1, 'policy': 1, 'value': 0.0, 'is_leaf': True, 'tracker': BoardTracker(), 'ko_states': set()}
+initial_state = {
+    'board': x,
+    'loc': None,
+    'color': 1,
+    'passed': False,
+    'number': 1,
+    'policy': 1,
+    'value': 0.0,
+    'is_leaf': True,
+    'tracker': BoardTracker(),
+    'ko_states': set(),
+}
 root = Node(initial_state)
 t0 = time.perf_counter()
+policy_net = PolicyNet()
 
 for i in range(1000):
     print('iteration, ', i)
     iteration(root)
 
-
-
-
+# Output the results
 print('max depth is: ', count_max_depth(root))
 print('Number of nodes:', dfs_child_count(root))
 print('Time information: ', tsc)

@@ -2,9 +2,11 @@ import numpy as np
 import re
 import matplotlib.pyplot as plt
 from baduk import *
+import os
+import sys
 
 # load png images in matplotlib and display them
-
+print(sys.version)
 static = 'static'
 go_board = plt.imread(os.path.join(static, 'go_board.png'))[16:, 218:741, :]
 black_piece = plt.imread(os.path.join(static, 'go_black.png'))
@@ -148,6 +150,8 @@ def minus_one(loc):
         return tuple([x - 1 for x in loc])
     return [tuple([x - 1 for x in loc]) for loc in loc]
 
+
+
 def draw_ring(radius, thickness, opacity=1.0):
     size = 2 * (radius + thickness) + 1
     ring = np.zeros((size, size, 4), dtype=np.uint8)
@@ -166,9 +170,9 @@ def draw_ring(radius, thickness, opacity=1.0):
 
     return ring
 def is_eye_in_living_shape(x, location):
-
     for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-        loc = np.array(location) + np.array(direction)
+     loc = np.array(location) + np.array(direction)
+     if 0 <= loc[0] < x.shape[0] and 0 <= loc[1] < x.shape[1]:
         here = x[loc[0], loc[1]]
         group = [loc]
         eyes = set()
@@ -377,12 +381,11 @@ def SelfCaptureError(Exception):
         super().__init__(message)
 
 
-def remove_dead_stones(x):
+def remove_dead_stones(x, tracker):
     new_x = x.copy()
     dead_stones = np.zeros(x.shape, dtype=int)
-
     # Detect atari groups and update the mask
-    ataris = np.nonzero(detect_atari_groups(x))
+    ataris = np.nonzero(detect_atari_groups(x, tracker))
     for i, j in zip(*ataris):
         new_x[i, j] = 0
         dead_stones[i, j] = x[i, j]
@@ -392,9 +395,9 @@ def remove_dead_stones(x):
                 dead_stones[i, j] = x[i, j]
                 new_x[i, j] = 0
     return new_x, dead_stones
-def end_game(x, move_count):
+def end_game(x, move_count, tracker):
     print('Scoring...')
-    y, dead = remove_dead_stones(x)
+    y, dead = remove_dead_stones(x, tracker)
     num_removed_stones = len(np.nonzero(dead)[0])
     print('Game has ended on round ' + str(move_count))
     print('Removed ' + str(num_removed_stones) + ' dead stones!')
@@ -434,9 +437,7 @@ def run_from_goban():
         x, tracker = action(x, loc, color, tracker)
         x, tracker, ko_states = process(x, loc, color, tracker, ko_states)
 
-    x = np.fliplr(x)
-    fig, ax = plot_board(x)
-    ax.imshow(go_board, extent=[0, 24, 0, 18], zorder=-1)
+    end_game(x, move_count, tracker)
 
     plt.show()
 
