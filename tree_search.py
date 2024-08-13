@@ -20,27 +20,6 @@ def get_uct(node):
     return explore, exploit
 
 
-def scuffed_policy(legal_moves):
-    """A simple policy function based on distance from the center."""
-    global tsc
-    tstart = time.perf_counter()
-
-    mean = (4, 4)
-    std = 2
-
-    y = np.zeros([19, 19])
-    x_coords, y_coords = np.indices(y.shape)
-    distances = np.sqrt((x_coords - mean[0]) ** 2 + (y_coords - mean[1]) ** 2)
-    y = 1 / (std * np.sqrt(2 * np.pi)) * np.exp(-distances / (2 * std ** 2))
-
-    y[~legal_moves] = 0
-    y /= np.sum(y)
-
-    tend = time.perf_counter()
-    tsc['policy'] += tend - tstart
-    return y
-
-
 class Node:
     """Node in a Monte Carlo Tree Search (MCTS) tree."""
 
@@ -95,7 +74,6 @@ class Node:
         tstart = time.perf_counter()
         legal_list = np.argwhere(self.legal_actions)
         if len(legal_list) == 0:
-            print('max depth is: ', count_max_depth(root))
             raise ValueError('No legal moves!')
         count = 0
         children = np.empty(0, dtype=Node)
@@ -129,7 +107,6 @@ class Node:
             new_state = Node(new_state, self)
             children = np.append(children, new_state)
         tend = time.perf_counter()
-        print(self.board)
         tsc['expand'] += tend - tstart
         self.children = children
         self.is_leaf = False
@@ -160,7 +137,6 @@ class Node:
             explore, exploit = get_uct(child)
             uct_values.append([c * explore + exploit])
         uct_values = np.array(uct_values)
-        print(uct_values)
         where_max = np.argmax(uct_values)
         tend = time.perf_counter()
         tsc['select_uct'] += tend - tstart
@@ -191,7 +167,6 @@ def descend(node):
     while not node.is_leaf:
         node = node.select_uct()
         depth += 1
-    print('depth is: ', depth)
     return node
 
 
@@ -239,7 +214,7 @@ t0 = time.perf_counter()
 policy_net = PolicyNet()
 
 for i in range(1000):
-    print('iteration, ', i)
+    print('iteration:', i)
     iteration(root)
 
 # Output the results
