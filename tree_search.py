@@ -4,7 +4,7 @@ from model import *
 
 # Time statistics collector
 tsc = {
-    'get_uct': 0,
+    'calculate_uct': 0,
     'node init': 0,
     'expand': 0,
     'policy': 0,
@@ -13,11 +13,13 @@ tsc = {
 }
 
 
-def get_uct(node):
-    """Calculate the UCT (Upper Confidence Bound for Trees) value."""
-    explore = np.sqrt(np.log(node.parent.number) / node.number)
-    exploit = node.value / node.number
-    return explore, exploit
+def calculate_uct(node, c=5):
+    """Calculate the UCT (Upper Confidence Bound for Trees) value from the perspective of the parent node."""
+
+    p = node.policy
+    explore = node.value / node.number
+    exploit = p * c * np.sqrt(node.parent.number) / (1 + node.number)
+    return explore + exploit
 
 
 class Node:
@@ -26,7 +28,6 @@ class Node:
     def __init__(self, state, parent=None):
         global tsc
         tstart = time.perf_counter()
-
         self.board = state['board']
         self.ko_states = set() if parent is None else parent.ko_states
         self.parent = parent
@@ -86,7 +87,7 @@ class Node:
         policy, value = policy_net(x)
         policy = policy.detach().numpy()
         value = value.detach().numpy()
-    #    value = np.random.rand()
+        value = np.random.rand()
 
         for loc in np.argwhere(self.legal_actions):
             count += 1
@@ -132,12 +133,13 @@ class Node:
         global tsc
         tstart = time.perf_counter()
         uct_values = []
-        c = 0.50
         for child in self.children:
-            explore, exploit = get_uct(child)
-            uct_values.append([c * explore + exploit])
+            uct = calculate_uct(child)
+            uct_values.append(uct)
         uct_values = np.array(uct_values)
+   #     print('uct values are: ', uct_values)
         where_max = np.argmax(uct_values)
+    #    print('where max is: ', where_max)
         tend = time.perf_counter()
         tsc['select_uct'] += tend - tstart
         return self.children[where_max]
@@ -163,10 +165,11 @@ def dfs_child_count(root):
 
 def descend(node):
     """Descend the tree to a leaf node."""
-    depth = 0
+    depth = 1
     while not node.is_leaf:
         node = node.select_uct()
         depth += 1
+    print('depth:', depth)
     return node
 
 
@@ -176,14 +179,6 @@ def ascend(node):
         node = node.parent
     return node
 
-
-def count_max_depth(node):
-    """Count the maximum depth of the tree."""
-    depth = 0
-    while not node.is_leaf:
-        node = node.select_uct()
-        depth += 1
-    return depth
 
 
 def iteration(node):
@@ -218,7 +213,6 @@ for i in range(1000):
     iteration(root)
 
 # Output the results
-print('max depth is: ', count_max_depth(root))
 print('Number of nodes:', dfs_child_count(root))
 print('Time information: ', tsc)
 print('Baduk time info (for comparison): ', time_consuming_functions)
