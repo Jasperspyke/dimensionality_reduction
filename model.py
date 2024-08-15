@@ -11,6 +11,7 @@ print(sys.version)
 print(torch.__version__)
 
 
+
 x = np.zeros(shape=(19, 19), dtype=float)
 x_white = x == -1
 x_black = x == 1
@@ -33,7 +34,9 @@ class PolicyNet(nn.Module):
         x = x.view(-1, 128 * 19 * 19)
         policy = F.softmax(self.fc_policy(x), dim=1)
         policy = policy.view(19, 19)
-        value = torch.tanh(self.fc_value(x))
+        value = torch.tanh(self.fc_value(x)) * 7
+        if value < 0:
+            value *= -1
         return policy, value
 
 
@@ -42,11 +45,11 @@ if __name__ == "__main__":
     policy_net = PolicyNet()
     t1 = time.perf_counter()
     x = x.clone().detach()
-    print(x)
-    print(x.size())
     sys.exit()
     y = policy_net(x)
     t2 = time.perf_counter()
-
     print('Time:', t2 - t1)
     print('Policy:', y[0])
+
+
+policy_net = PolicyNet()

@@ -1,6 +1,7 @@
 import copy
 from baduk import *
 from model import *
+import matplotlib.pyplot as plt
 
 # Time statistics collector
 tsc = {
@@ -11,15 +12,13 @@ tsc = {
     'backpropagate': 0,
     'select_uct': 0,
 }
-
-
-def calculate_uct(node, c=5):
+def calculate_uct(node, c=20):
     """Calculate the UCT (Upper Confidence Bound for Trees) value from the perspective of the parent node."""
 
     p = node.policy
     explore = node.value / node.number
     exploit = p * c * np.sqrt(node.parent.number) / (1 + node.number)
-    return explore + exploit
+    return explore + exploit + np.random.rand() * 1e-6
 
 
 class Node:
@@ -86,8 +85,8 @@ class Node:
         x = torch.tensor(x, dtype=torch.float32).clone().detach().unsqueeze(0)
         policy, value = policy_net(x)
         policy = policy.detach().numpy()
-        value = value.detach().numpy()
-        value = np.random.rand()
+        value = value.detach().numpy().item()
+
 
         for loc in np.argwhere(self.legal_actions):
             count += 1
@@ -98,7 +97,7 @@ class Node:
                 'loc': tuple(loc),
                 'color': self.color * -1,
                 'passed': False,
-                'number': self.number + 1,
+                'number': self.number + 1 + self.number+0.01 ** 2,
                 'policy': policy[loc[0], loc[1]],
                 'value': value,
                 'is_leaf': True,
@@ -122,7 +121,7 @@ class Node:
         tstart = time.perf_counter()
         z = self.value
         node = self
-        while node.parent is not None:
+        while node.parent is not root:
             node = node.parent
             node.number += 1
             node.value += z
@@ -197,7 +196,7 @@ initial_state = {
     'loc': None,
     'color': 1,
     'passed': False,
-    'number': 1,
+    'number': 0,
     'policy': 1,
     'value': 0.0,
     'is_leaf': True,
@@ -208,13 +207,25 @@ root = Node(initial_state)
 t0 = time.perf_counter()
 policy_net = PolicyNet()
 
-for i in range(1000):
-    print('iteration:', i)
-    iteration(root)
+def n_iterations(n):
+    for i in range(n):
+        print('iteration:', i)
+        iteration(root)
+        print('Favorite child of root is: ', root.select_uct(), 'with uct value: ', calculate_uct(root.select_uct()))
+        print('10 other uct values are: , ', [calculate_uct(i) for i in root.children[:10]])
+    # Output the results
+    print('Number of nodes:', dfs_child_count(root))
+    print('Time information: ', tsc)
+    print('Baduk time info (for comparison): ', time_consuming_functions)
+    t2 = time.perf_counter()
+    print('Time elapsed:', t2 - t0)
+    for i in root.children:
+        print('child is', i, 'number is: ', round(i.number), 'value is: ', i.value, 'uct is: ', calculate_uct(i))
 
-# Output the results
-print('Number of nodes:', dfs_child_count(root))
-print('Time information: ', tsc)
-print('Baduk time info (for comparison): ', time_consuming_functions)
-t2 = time.perf_counter()
-print('Time elapsed:', t2 - t0)
+def playout(node):
+    """Complete a single self play game from the given node and return a tuple containing the winner and the final board state."""
+
+if __name__ == '__main__':
+    n_iterations(1000)
+    plt.imshow(root.board)
+    plt.show()

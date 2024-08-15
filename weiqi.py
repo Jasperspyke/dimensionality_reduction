@@ -1,4 +1,3 @@
-import numpy as np
 import re
 import matplotlib.pyplot as plt
 from baduk import *
@@ -427,7 +426,7 @@ def run_from_goban():
     x = np.zeros([19, 19], dtype=int)
     ko_states = set()
     tracker = BoardTracker()
-    sgf = os.path.join(static, 'game_4.sgf')
+    sgf = os.path.join(static, 'kot.sgf')
     acts = load_sgf(sgf)
     move_count = 0
 
