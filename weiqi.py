@@ -5,7 +5,6 @@ import os
 import sys
 
 # load png images in matplotlib and display them
-print(sys.version)
 static = 'static'
 go_board = plt.imread(os.path.join(static, 'go_board.png'))[16:, 218:741, :]
 black_piece = plt.imread(os.path.join(static, 'go_black.png'))
@@ -343,7 +342,7 @@ def from_tuple(tup):
     return chr(tup[0] + 65) + str(tup[1] + 1)
 
 
-def score_game(x, black_prisoners, white_prisoners,komi=6.5):
+def score_game(x, black_prisoners, white_prisoners,komi=0):
 
     score, territory_arr = get_territory(x)
     score += black_prisoners
@@ -394,21 +393,19 @@ def remove_dead_stones(x, tracker):
                 dead_stones[i, j] = x[i, j]
                 new_x[i, j] = 0
     return new_x, dead_stones
-def end_game(x, move_count, tracker):
+def end_game(x, tracker):
     print('Scoring...')
     y, dead = remove_dead_stones(x, tracker)
-    num_removed_stones = len(np.nonzero(dead)[0])
-    print('Game has ended on round ' + str(move_count))
-    print('Removed ' + str(num_removed_stones) + ' dead stones!')
-    x = y
-    score, territory, winner = score_game(x, 0, 0)
-    print('Black score: ' + str(score) + ' points')
-    print('Winner: ' + ('Black' if winner == 1 else 'White'))
-
-    fig, ax = plot_board(x, territory=territory, fig=None, ax=None)
+    score, territory, winner = score_game(y, 0, 0)
+    fig, ax = plot_board(y, territory=territory, fig=None, ax=None)
     fig, ax = plot_board(dead, stone_opacity=0.5, fig=fig, ax=ax)
     ax.imshow(go_board, extent=[0, 24, 0, 18], zorder=-1)
+    print('Black score: ' + str(score) + ' points')
+    print('Winner: ' + ('Black' if winner == 1 else 'White'))
+    ax.savefig('static/board' + str(np.randint(0, 1000)) + '.png')
     plt.show()
+    return winner
+
 
 
 def load_sgf(sgf):
@@ -436,11 +433,12 @@ def run_from_goban():
         x, tracker = action(x, loc, color, tracker)
         x, tracker, ko_states = process(x, loc, color, tracker, ko_states)
 
-    end_game(x, move_count, tracker)
+    end_game(x, tracker)
 
     plt.show()
 
 
 if __name__ == '__main__':
+    print(sys.version)
     x = np.zeros([19, 19], dtype=int)
     run_from_goban()
