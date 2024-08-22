@@ -97,6 +97,22 @@ class Node:
             }
             new_state = Node(new_state, self)
             children = np.append(children, new_state)
+
+        new_state = {
+            'board': self.board,
+            'loc': tuple(loc),
+            'color': self.color * -1,
+            'passed': False,
+            'number': self.number + 1 + self.number+0.01 ** 2,
+            'policy': policy[-1],
+            'value': value,
+            'is_leaf': True,
+            'tracker': None,
+            'ko_states': None,
+        }
+
+        new_state = Node(new_state, self)
+        children = np.append(children, new_state)
         tend = time.perf_counter()
         tsc['expand'] += tend - tstart
         self.children = children

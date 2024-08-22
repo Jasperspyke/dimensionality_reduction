@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import sys
 import time
+# xo xo
 
 time_consuming_functions = {
     'process': 0,
@@ -317,6 +318,9 @@ def process(board, loc, col, tracker, ko_states):
     """
     global time_consuming_functions
     t0 = time.perf_counter()
+
+    if loc == (-999, -999):
+        return board, tracker, ko_states
     tracker, connections = groupify(tracker, loc, color)
     friend = tracker.white if color == -1 else tracker.black
     enemy = tracker.white if color == 1 else tracker.black
