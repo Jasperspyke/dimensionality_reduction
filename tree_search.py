@@ -63,9 +63,6 @@ class Node:
             self.board, self.tracker, self.ko_states = process(
                 self.board, self.loc, self.color, self.tracker, self.ko_states
             )
-            #temp = self.tracker.white
-           # self.tracker.white = self.tracker.black
-           # self.tracker.black = temp
 
         self.legal_actions = (
             self.tracker.white.legal_moves
@@ -102,7 +99,7 @@ class Node:
             'board': self.board,
             'loc': tuple(loc),
             'color': self.color * -1,
-            'passed': False,
+            'passed': True,
             'number': self.number + 1 + self.number+0.01 ** 2,
             'policy': policy[-1],
             'value': value,
@@ -117,6 +114,7 @@ class Node:
         tsc['expand'] += tend - tstart
         self.children = children
         self.is_leaf = False
+
 
     def reinitialize(self):
         node = self
@@ -295,49 +293,48 @@ def playout(node, num_iterations=100):
 
     results = pd.DataFrame(columns=['probability', 'outcome', 'value', 'winner', 'color'])
     policy_net = PolicyNet()
+    last_player_pased = False
+    game_over = False
+    count = 0
     global root
-    while True:
-        try:
-            print('node is; ', node)
-            assert node.is_leaf
-            for i in range(num_iterations):
-                node = iteration(node, policy_net)
+    while not game_over:
+        count += 1
+        print('count is: ', count)
+        assert node.is_leaf
+        for i in range(num_iterations):
+            node = iteration(node, policy_net)
 
-            # for ML backpropagation
-            best_move = select_move(node)
-            recursive_child_deleter(node)
-            probability, value = best_move.legal_policy(policy_net)
-            event = np.zeros((19, 19))
-            event[best_move.loc] = 1
-            winner = 1  # Uninformative for now
-            color = node.color
-            res = {'probability': probability, 'event': event, 'value': value, 'winner': winner,
-                               'color': color}
-            results.loc[len(results)] = res
-            print('size of the node is: ', dfs_child_count(node))
+        # for ML backpropagation
+        best_move = select_move(node)
 
-            node = best_move.reinitialize()
+        if best_move.passed:
+            print('player, ', -best_move.color, ' passed on round ', count, ' of the game.')
+            if last_player_pased:
+                game_over = True
+            else:
+                last_player_pased = True
+        else:
+            last_player_pased = False
 
-            del root
-            root = node
-
-        except MovesDepletedError:
-            print('Playout successfully terminated!')
-            results.columns[-1] *= wq.end_game(x.board, x.tracker)
-            print('Results are: ', results)
-            pd.to_csv('static/results.csv')
-            sys.exit(1)
-            break
-
+        recursive_child_deleter(node)
+        probability, value = best_move.legal_policy(policy_net)
+        event = np.zeros((19, 19))
+        event[best_move.loc] = 1
+        winner = 1  # Uninformative for now
+        color = node.color
+        res = {'probability': probability, 'event': event, 'value': value, 'winner': winner,
+                           'color': color}
+        results.loc[len(results)] = res
+        node = best_move.reinitialize()
+        del root
+        root = node
     return node
 
 
 if __name__ == "__main__":
     print('Python version is: ', sys.version)
-
     root = Node(initial_state)
-    print('root initialized to: ', root)
     new_state = playout(root)
     end_state = new_state.board
     np.save('static/board.npy', end_state)
-    wq.end_game(end_state)# <3
+    wq.end_game(end_state, tracker=new_state.tracker)

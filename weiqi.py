@@ -402,7 +402,7 @@ def end_game(x, tracker):
     ax.imshow(go_board, extent=[0, 24, 0, 18], zorder=-1)
     print('Black score: ' + str(score) + ' points')
     print('Winner: ' + ('Black' if winner == 1 else 'White'))
-    ax.savefig('static/board' + str(np.randint(0, 1000)) + '.png')
+    plt.savefig('static/board' + str(np.random.randint(0, 1000)) + '.png')
     plt.show()
     return winner
 
