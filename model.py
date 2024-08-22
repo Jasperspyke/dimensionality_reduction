@@ -34,3 +34,6 @@ if __name__ == "__main__":
     legal_moves = torch.rand(19, 19) < 0.5
     policy_net = PolicyNet()
     policy, value = policy_net(x, legal_moves)
+
+
+    # <3

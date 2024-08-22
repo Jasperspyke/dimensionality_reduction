@@ -425,3 +425,4 @@ def process(board, loc, col, tracker, ko_states):
     b = tracker.white.groups
 
     return new_board, tracker, ko_states
+# <3

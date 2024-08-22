@@ -324,4 +324,4 @@ if __name__ == "__main__":
     new_state = playout(root)
     end_state = new_state.board
     np.save('static/board.npy', end_state)
-    wq.end_game(end_state)
+    wq.end_game(end_state)# <3
