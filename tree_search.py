@@ -102,6 +102,16 @@ class Node:
         self.children = children
         self.is_leaf = False
 
+    def reinitialize(self):
+        node = self
+        """Reinitialize the tree to a single node."""
+        node.children = np.empty(0, dtype=Node)
+        node.is_leaf = True
+        node.number = 1
+        node.policy = 1
+        node.value = 0
+        node.parent = None
+        return node
 
     def legal_policy(self, policy_net):
         color = self.color
@@ -121,6 +131,17 @@ class Node:
     def __repr__(self):
         return f'I am a node named {id(self)}.'
 
+    def recursive_child_deleter(node):
+        # Recursively delete all children of the node
+        for child in node.children:
+            if not child.is_leaf:
+                recursive_child_deleter(child)
+            del child  # Remove reference to child node
+
+        # Clear the children list to remove any lingering references
+        node.children = np.empty(0, dtype=Node)
+        node.is_leaf = True
+        node.parent = None
     def backpropagate(self):
         """Propagate the results up the tree."""
         global tsc
@@ -144,9 +165,7 @@ class Node:
             uct = calculate_uct(child)
             uct_values.append(uct)
         uct_values = np.array(uct_values)
-   #     print('uct values are: ', uct_values)
         where_max = np.argmax(uct_values)
-    #    print('where max is: ', where_max)
         tend = time.perf_counter()
         tsc['select_uct'] += tend - tstart
         return self.children[where_max]
@@ -167,11 +186,11 @@ def ascend(node):
         node = node.parent
     return node
 
-def dfs_child_count(root):
+def dfs_child_count(node):
     """Perform a depth-first search to count all nodes."""
     visited = set()
     count = 0
-    stack = [root]
+    stack = [node]
 
     while stack:
         node = stack.pop()
@@ -184,6 +203,12 @@ def dfs_child_count(root):
 
     return count
 
+def recursive_child_deleter(node):
+    # Recursively delete all children of the node
+    for child in node.children:
+        if not child.is_leaf:
+            recursive_child_deleter(child)
+        del child  # Remove reference to child node
 
  # Choose move by running MCTS from the root node.
 def take_action(node, policy_net, num_iterations=10):
@@ -211,19 +236,28 @@ def take_action(node, policy_net, num_iterations=10):
     # Node instance, predicted move probability, move event vector (19x19)
     return best_move, {'probability': probability, 'outcome': outcome, 'value': value, 'winner': winner, 'color': color}
 
+    # Clear the children list to remove any lingering references
+    node.children = np.empty(0, dtype=Node)
+    node.is_leaf = True
 
 
 def iteration(node, policy_net):
     """Perform one iteration of the MCTS algorithm."""
-    if not node.legal_actions.sum() > 0:
-        print('node is: ', node)
-        print('legal actions are: ', node.legal_actions)
-        sys.exit(1)
     node = descend(node)
     node.expand(policy_net=policy_net)
     node = node.select_uct()
     node.backpropagate()
     node = ascend(node)
+    assert not node.is_leaf
+    return node
+
+def select_move(node):
+    """Select the move with the highest visit count."""
+    visit_counts = [child.number for child in node.children]
+    where_max = np.argmax(visit_counts)
+    return node.children[where_max]
+
+
 
 
 # Initialize the root node and start the iterations
@@ -241,31 +275,36 @@ initial_state = {
     'ko_states': set(),
 }
 
-def n_iterations(n, node, policy_net):
-    for i in range(n):
-        if i % 100 == 0:
-            print('iteration:', i)
-            print('board state is: ', node.board)
-        iteration(node, policy_net)
-
-def playout(node):
+def playout(node, num_iterations=100):
 
     results = pd.DataFrame(columns=['probability', 'outcome', 'value', 'winner', 'color'])
     policy_net = PolicyNet()
-    w = node
-    count = 0
+    global root
     while True:
         try:
-            print('Playout iteration: ', count)
-            x, results.loc[-1] = take_action(w, policy_net)
-            assert not np.all(x.board == np.zeros_like(w.board))
-            x.value = 0
-            x.number = 0
-            x.passed = False
-            x.is_leaf = True
-            x.children = np.empty(0, dtype=Node)
-            w = x
-            count += 1
+            print('node is; ', node)
+            assert node.is_leaf
+            for i in range(num_iterations):
+                node = iteration(node, policy_net)
+
+            # for ML backpropagation
+            best_move = select_move(node)
+            recursive_child_deleter(node)
+            probability, value = best_move.legal_policy(policy_net)
+            event = np.zeros((19, 19))
+            event[best_move.loc] = 1
+            winner = 1  # Uninformative for now
+            color = node.color
+            res = {'probability': probability, 'event': event, 'value': value, 'winner': winner,
+                               'color': color}
+            results.loc[len(results)] = res
+            print('size of the node is: ', dfs_child_count(node))
+
+            node = best_move.reinitialize()
+
+            del root
+            root = node
+
         except MovesDepletedError:
             print('Playout successfully terminated!')
             results.columns[-1] *= wq.end_game(x.board, x.tracker)
@@ -279,9 +318,10 @@ def playout(node):
 
 if __name__ == "__main__":
     print('Python version is: ', sys.version)
+
     root = Node(initial_state)
+    print('root initialized to: ', root)
     new_state = playout(root)
-    res = new_state.board
-    assert not np.all(res == 0)
-    np.save('static/board.npy', res)
-    wq.end_game(res)
+    end_state = new_state.board
+    np.save('static/board.npy', end_state)
+    wq.end_game(end_state)
