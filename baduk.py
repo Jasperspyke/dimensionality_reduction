@@ -266,12 +266,25 @@ def groupify(tracker, loc, color):
     t0 = time.perf_counter()
     connections = 0
     new_group = {loc}
+
+    deactivate = False
+    b = tracker.black.groups
+    w = tracker.white.groups
+
+    #if len(b) + len(w) > 0:
+      #  deactivate = True
+      #  print('color is', color)
+      #  print('black groups', tracker.black.groups)
+      #  print('white groups', tracker.white.groups)
+      #  print('white lib is', tracker.white.liberties)
+      #  print('black lib is', tracker.black.liberties)
     structure = tracker.white.groups if color == -1 else tracker.black.groups
+
+
 
     for dir in ((0, 1), (0, -1), (-1, 0), (1, 0)):
         dir = np.array(dir)
         new_loc = tuple(dir + loc)
-
         if any(new_loc in s for s in structure):
             for s in structure:
                 if new_loc in s:
@@ -281,10 +294,24 @@ def groupify(tracker, loc, color):
     structure.append(new_group)
     t1 = time.perf_counter()
     time_consuming_functions['groupify'] += t1 - t0
+
+
+    if deactivate:
+        temp = tracker.black
+        tracker.black = tracker.white
+        tracker.white = temp
+        print('location issss', loc)
+        print('color is', color)
+        print('black groups', tracker.black.groups)
+        print('white groups', tracker.white.groups)
+        print('white lib is', tracker.white.liberties)
+        print('black lib is', tracker.black.liberties)
+        sys.exit(1)
     return tracker, connections
 
 
-def process(board, loc, color, tracker, ko_states):
+def process(board, loc, col, tracker, ko_states):
+    color = -col
     """
     Process the board after a move, checking for captures and ko states.
     """
@@ -300,6 +327,7 @@ def process(board, loc, color, tracker, ko_states):
     adjacent_enemies = []
     removed = False
 
+    # Identify adjacent allies, enemies, and liberties for the placed stone
     for dir in ((1, 0), (-1, 0), (0, -1), (0, 1)):
         new_loc = np.array(loc) + np.array(dir)
         if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19:
@@ -310,12 +338,14 @@ def process(board, loc, color, tracker, ko_states):
             else:
                 self_liberties += 1
 
-    for i, stone in enumerate(adjacent_enemies):
+    # Process adjacent enemy stones and check for captures
+    for stone in adjacent_enemies:
         stone = tuple(stone)
         for group in enemy.groups:
             if stone in group:
                 lib = count_liberties(group, new_board)
                 if lib == 0:
+                    # Capture the enemy group
                     for location in group:
                         new_board[location] = 0
                     enemy.groups.remove(group)
@@ -324,36 +354,32 @@ def process(board, loc, color, tracker, ko_states):
                         enemy.legal_moves[st] = 1
                         friend.legal_moves[st] = 1
                 else:
-                    enemy.liberties[i] = lib
+                    # Update enemy group liberties
+                    idx = enemy.groups.index(group)
+                    enemy.liberties[idx] = lib
 
-    for i, stone in enumerate(adjacent_allies):
+    # Process adjacent ally stones and update liberties
+    for stone in adjacent_allies:
         stone = tuple(stone)
-        if not any(stone in group for group in friend.groups):
-            sys.exit(1)
         for group in friend.groups:
             if stone in group:
-                try:
-                    lib = friend.liberties[i] - connections
-                except IndexError:
-                    pass
+                idx = friend.groups.index(group)
+                # Calculate the new liberties by subtracting the connected ones
+                lib = count_liberties(group, new_board) - connections
+                if lib < 0:
+                    lib = 0  # Ensure liberties are non-negative
+                friend.liberties[idx] = lib
 
-                if lib == 0:
-                    raise ValueError('Cant happen!')
-                else:
-                    try:
-                        friend.liberties[i] = lib
-                    except IndexError:
-                        pass
-
+    # Check and handle libertiless spaces
     libertiless_spaces = []
-
-    # Look around the new stone for libertiless spaces
     for direction in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
         new_loc = np.array(loc) + np.array(direction)
         if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19:
             if new_board[new_loc[0], new_loc[1]] == 0:
                 if not would_be_liberty(new_board, new_loc, color):
                     libertiless_spaces.append(tuple(new_loc))
+
+    # Update legal moves for the player
     friend_start = time.perf_counter()
     friend.legal_moves[loc] = 0
     for loc in libertiless_spaces:
@@ -363,10 +389,9 @@ def process(board, loc, color, tracker, ko_states):
             if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19:
                 if new_board[new_loc[0], new_loc[1]] == -color:
                     for group in enemy.groups:
-                        if tuple(new_loc) in group:
-                            if count_liberties(group, new_board) == 1:
-                                friend.legal_moves[loc] = 1
-                                break
+                        if tuple(new_loc) in group and count_liberties(group, new_board) == 1:
+                            friend.legal_moves[loc] = 1
+                            break
 
     enemy.legal_moves[loc] = 0
     for loc in libertiless_spaces:
@@ -376,10 +401,11 @@ def process(board, loc, color, tracker, ko_states):
             if 0 <= new_loc[0] < 19 and 0 <= new_loc[1] < 19:
                 if new_board[new_loc[0], new_loc[1]] == color:
                     for group in friend.groups:
-                        if tuple(new_loc) in group:
-                            if count_liberties(group, new_board) == 1:
-                                enemy.legal_moves[loc] = 1
-                                break
+                        if tuple(new_loc) in group and count_liberties(group, new_board) == 1:
+                            enemy.legal_moves[loc] = 1
+                            break
+
+    # Time tracking and Ko state checks
     friend_end = time.perf_counter()
     time_consuming_functions['friend'] += friend_end - friend_start
     t1 = time.perf_counter()
@@ -391,16 +417,11 @@ def process(board, loc, color, tracker, ko_states):
             print('Ko violation detected! at ', loc)
             board[loc[0], loc[1]] = 999
             fancy_print(board)
-            for j, i in enumerate(ko_states):
-                if i == encoded:
-                    print('Ko state: ')
-                    print('j is: ', j)
-                    ko_states = list(ko_states)
-                    print(ko_states[j])
-                    print('encoded is: ', encoded)
-                    print(len(ko_states))
             raise KoError
         ko_states.add(encoded)
         ko_states = set(list(ko_states)[-2:])
+
+    a = tracker.black.groups
+    b = tracker.white.groups
 
     return new_board, tracker, ko_states

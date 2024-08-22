@@ -63,9 +63,9 @@ class Node:
             self.board, self.tracker, self.ko_states = process(
                 self.board, self.loc, self.color, self.tracker, self.ko_states
             )
-            temp = self.tracker.white
-            self.tracker.white = self.tracker.black
-            self.tracker.black = temp
+            #temp = self.tracker.white
+           # self.tracker.white = self.tracker.black
+           # self.tracker.black = temp
 
         self.legal_actions = (
             self.tracker.white.legal_moves
@@ -89,7 +89,7 @@ class Node:
                 'color': self.color * -1,
                 'passed': False,
                 'number': self.number + 1 + self.number+0.01 ** 2,
-                'policy': policy[loc[0], loc[1]],
+                'policy': policy[:-1].reshape((19,19))[loc[0], loc[1]],
                 'value': value,
                 'is_leaf': True,
                 'tracker': None,
@@ -186,7 +186,7 @@ def dfs_child_count(root):
 
 
  # Choose move by running MCTS from the root node.
-def take_action(node, policy_net, num_iterations=100):
+def take_action(node, policy_net, num_iterations=10):
     assert node.is_leaf
     for i in range(num_iterations):
         iteration(node, policy_net)
@@ -201,6 +201,12 @@ def take_action(node, policy_net, num_iterations=100):
     outcome[best_move.loc] = 1
     winner = 1
     color = node.color
+
+    print('tracker black groups are: ', node.tracker.black.groups)
+    print('tracker white groups are : ', node.tracker.white.groups)
+    print('tracker black liberties are: ', node.tracker.black.liberties)
+    print('tracker white liberties are: ', node.tracker.white.liberties)
+    print('board is: ', node.board)
 
     # Node instance, predicted move probability, move event vector (19x19)
     return best_move, {'probability': probability, 'outcome': outcome, 'value': value, 'winner': winner, 'color': color}
